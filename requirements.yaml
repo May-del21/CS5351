@@ -1,0 +1,1542 @@
+schema_version: 1.2.0
+document:
+  title: TradingAgents (v0.7.1 baseline) project requirements
+  owner: A
+  decision_date: '2026-11-22'
+  timezone: Asia/Hong_Kong
+  status: proposed_for_adoption
+  adoption_record: req-final-scope-A-2026-11-22.md#6
+  source_document: requirements-draft-v4.md
+  source_sha256: 542f382c6ae7040442c075cfe4c8416025af4872dcb62c5b189154c846cab051
+  baseline_document: requirements-draft-v3.md
+  baseline_sha256: 8f9dc1f193a75660f57ec210579018edee0ca6b7f876fe786a7c5c9c94923335
+  note: 'Requirement text is carried from requirements-draft-v4.md, which is requirements-draft-v3.md
+    with D-1, D-2 and the revised D-3 applied. Eight invariant entries (INV-001..008) are promoted from
+    ARCH-002''s R1-R8 rules table (A-10), because CS5351 D1 requires `type: invariant`. Non-functional
+    entries carry structured metric/threshold/verification fields (A-11), as CS5351 D1 requires. Nothing
+    here claims a requirement is implemented or that the team has adopted this set. Two corrections of
+    2026-11-23, both from Member B''s reply: (1) `R1`-`R8` here is always the output-check rule set of
+    requirements-draft-v4.md, never the team''s runtime-policy triggers, which reuse the same `R` prefix;
+    the checker in `tradingagents/runapi/checks.py` emits only `Q1`-`Q4`. (2) Rules R4-R8 rest on coverage,
+    sentiment and intermediate-output fields that this requirement set defines and the current checker
+    does not inspect, and R2 has no enforcing component, so the table states what a compliant system must
+    do, not what the baseline does.'
+scope:
+  statement: 'Research-only. The system produces research and a rating about an instrument. It does not
+    size positions and does not check exposure against an account. A portfolio file, which v0.7.1 accepts,
+    is outside project scope: no requirement here makes a claim about runs that use one, and every fixture
+    runs without one.'
+  prd_narrative: 'This single YAML serves as both the machine-readable PRD and the consolidated requirements
+    registry. Basis: the CS5351 project PDF p.5 asks for a machine-readable product requirements document
+    and a consolidated requirements registry, both in YAML, under ./docs/req/, and p.9 lists exactly one
+    YAML there, docs/req/requirements.yaml, labelled machine-readable PRD (D1). No second PRD YAML is
+    required. Question closed 2026-11-22 on this evidence; see requirement-source-notes.md OQ-1.'
+  withdrawn_ids:
+  - id: REQ-TA-FR-002
+    reason: GUI out of scope; a GUI is a feature, not a quality attribute. The v0.7.1 CLI is the only
+      input.
+  - id: REQ-TA-NFR-SAFETY-001
+    reason: 'Research-only scope: no position sizing is validated.'
+  - id: REQ-TA-NFR-SAFETY-002
+    reason: Research-only scope. Replaced by REQ-TA-FR-007 part 3 (no ownership wording).
+priorities:
+  scheme: MoSCoW
+  values:
+  - Must
+  - Should
+  - Could
+status_values:
+- implemented
+- partial
+- proposed
+- to_be_confirmed
+requirements:
+- id: REQ-TA-RUN-001
+  title: Run result fields
+  type: functional
+  priority: Must
+  status: proposed
+  statement: "Every run shall end with a run record holding the fields below. Each field describes one\
+    \ thing only, and only the combinations in the validity table are allowed.\n\n| Field | Values | Set\
+    \ by | Present when |\n|---|---|---|---|\n| `run_outcome` | `COMPLETED`, `INCOMPLETE` | Run engine\
+    \ | Always |\n| `stop_reason` | `MODEL_FAILURE`, `DATA_FAILURE`, `BUDGET`, `INTERNAL_ERROR`, `PERSISTENCE_ERROR`,\
+    \ `INTERRUPTED` | Run engine | Only when `INCOMPLETE` |\n| `rating` | Buy, Overweight, Hold, Underweight,\
+    \ Sell, `REVIEW` | Portfolio Manager, read by the rating parser | Only when `COMPLETED` |\n| `output_check`\
+    \ | `PASSED`, `NEEDS_REVIEW`, `NOT_RUN` | Output check (ARCH-002) | Always |\n| `check_findings` |\
+    \ List of rule IDs, each marked blocking or corrected | Output check (ARCH-002) | Always (may be empty)\
+    \ |\n| `data_coverage` | One code per channel (FR-005) | FR-005 | Always |\n\n**Stop reasons**:\n\n\
+    | Reason | Kind | Raised when | Owner of the rule |\n|---|---|---|---|\n| `MODEL_FAILURE` | Failure\
+    \ | A model step produced no usable output after retries and the free-text fallback; also an authentication\
+    \ or provider-configuration error (`runapi/finalize.py:classify_exception` maps `authentication` and\
+    \ any `openai`/`anthropic`/`google`/`langchain` exception here) | NFR-001 |\n| `DATA_FAILURE` | Failure\
+    \ | Core data is unavailable, absent or stale | FR-005, FR-006 |\n| `BUDGET` | Planned stop | A required\
+    \ model request is refused by the run budget. A workflow that finishes within budget completes normally;\
+    \ which limit was hit goes to the log (OBS-001), not to the status. | PERF-002, COST-001, COST-002\
+    \ |\n| `INTERNAL_ERROR` | Failure | A defect or unmapped exception in the system's own code. Never\
+    \ used for budget exhaustion. | none (the default for an unclassified exception) |\n| `PERSISTENCE_ERROR`\
+    \ | Failure | Writing or committing the report or manifest failed before publication | NFR-REPRO-001\
+    \ |\n| `INTERRUPTED` | Planned stop | The run was cooperatively cancelled. Not a claim of durability\
+    \ through power loss. | FR-003 (resume), D-5 |\n\n**Spelling rule** (B2, Member B, 2026-11-23). The\
+    \ two failure values keep the spellings the\nimplementation already serializes: `MODEL_FAILURE` and\
+    \ `DATA_FAILURE`. The draft's short forms\n`MODEL` and `DATA` are human-facing labels only and are\
+    \ not values. Renaming a serialized value is a\nbreaking change for existing evidence, validators\
+    \ and readers, so no requirement here asks for one.\n`BUDGET` is the only addition; adding an enum\
+    \ value is not automatically supported by every existing\nreader, so every reader must be updated\
+    \ or it will reject the new value.\n\n**Precedence rule** (B, 2026-11-23). Exactly one primary reason\
+    \ is recorded. If critical\nreport-or-manifest publication fails, `PERSISTENCE_ERROR` is primary (NFR-REPRO-001,\
+    \ INV-14) and the\ninitiating cause is retained in the safe diagnostic. A budget refusal is never\
+    \ reported as\n`INTERNAL_ERROR`; if a budget stop and a persistence failure occur together, the persistence\
+    \ failure\nis primary and the budget cause is recorded as secondary.\n\n**Mapping rule** (exactly\
+    \ one reason per run):\n\n1. These six values are the complete vocabulary. Every `INCOMPLETE` run\
+    \ shall map to exactly one of\n   them, and a run that ends for an unlisted reason is a defect, not\
+    \ a new value.\n2. Budget exhaustion shall be reported as `BUDGET`. It shall never be relabelled `INTERNAL_ERROR`\
+    \ or\n   reported as a successful run.\n3. A `BUDGET` or `INTERRUPTED` stop shall not be relabelled\
+    \ `MODEL_FAILURE` or `DATA_FAILURE`; those\n   two describe a failure of the model or the data, not\
+    \ of a configured limit or a cancellation.\n4. A budget refusal must be recognised before the generic\
+    \ exception classifier runs, and the memory\n   settlement step and the structured-output fallback\
+    \ must not swallow it.\n\n**Validity table** (every other combination is invalid):\n\n| `run_outcome`\
+    \ | `stop_reason` | `rating` | `output_check` |\n|---|---|---|---|\n| `INCOMPLETE` | any one of the\
+    \ six | — | `NOT_RUN` |\n| `COMPLETED` | — | Buy / Overweight / Hold / Underweight / Sell | `PASSED`\
+    \ or `NEEDS_REVIEW` |\n| `COMPLETED` | — | `REVIEW` | `NEEDS_REVIEW` (rule R1) |\n\n**Evidence note.**\
+    \ No live attempt in `docs/reviews/evidence/live-verification-2026-11-21/` ends\n`INCOMPLETE`: all\
+    \ 15 deduplicated attempts are `COMPLETED` with a null stop reason (verified\n2026-11-23). Persistence\
+    \ and interruption behaviour is supported by the typed contract and offline\nfault tests, not by that\
+    \ cohort."
+  fit_criterion: Given every offline fixture in Appendix A plus 6 one-per-reason fixtures, when each runs,
+    then (a) 100% of runs produce a run record; (b) 100% of records match exactly one row of the validity
+    table; (c) each of the 6 stop reasons appears at least once and 6/6 map to the reason declared for
+    their fixture; (d) 0 records have `COMPLETED` while some agent step produced no output; (e) 0 budget-exhaustion
+    fixtures are labelled `INTERNAL_ERROR`; (f) 0 records carry a reason outside the six-value vocabulary
+    (1 unlisted reason = 1 blocking defect).
+  tradeoff: The report header shows three short lines (outcome, rating, check) instead of one.
+  dependencies: []
+  baseline: 'Re-verified 2026-11-23 against the team repository `Le-kk/CS5351@c0081cb`. The result contract
+    now exists: `tradingagents/runapi/result.py` defines `RunOutcome = COMPLETED|INCOMPLETE`, a `StopReason`
+    literal, `OutputCheck = PASSED|NEEDS_REVIEW|NOT_RUN`, and `RunResult` with cross-field invariants
+    (COMPLETED needs a rating and no stop reason; INCOMPLETE needs no rating, a stop reason and NOT_RUN).
+    `runapi/execution.py` builds the envelope and `runapi/finalize.py` maps exceptions to stop reasons.
+    The raw graph entry `propagate` still returns `(final_state, signal)` where `signal` is a 5-tier rating
+    or `REVIEW` (`graph/trading_graph.py`, `agents/rating.py`). The gap is the vocabulary, not the contract:
+    the enum holds MODEL_FAILURE, DATA_FAILURE, INTERNAL_ERROR, PERSISTENCE_ERROR and INTERRUPTED, and
+    has no BUDGET (OQ-6).'
+  open: Add the fields to the run record (NFR-REPRO-001) and set them on every exit path.
+  source:
+  - kind: team_document
+    ref: requirements-draft-v4.md
+    sha256: 542f382c6ae7040442c075cfe4c8416025af4872dcb62c5b189154c846cab051
+    locator: REQ-TA-RUN-001
+  - kind: baseline_observation
+    ref: Le-kk/CS5351@c0081cb
+    locator: baseline statement verified against the team repository
+  amended_by:
+  - D-3
+  - D-5
+  note: 'Decision OQ-6, resolved 2026-11-23 and revised the same day after Member B''s reply. The stop-reason
+    vocabulary is six values: `MODEL_FAILURE`, `DATA_FAILURE`, `BUDGET`, `INTERNAL_ERROR`, `PERSISTENCE_ERROR`,
+    `INTERRUPTED`. The first two keep the spellings the implementation already uses (`tradingagents/runapi/result.py:12-14`
+    at `Le-kk/CS5351@c0081cb`); A had briefly required `MODEL`/`DATA` and accepted B''s objection (B2)
+    that renaming is a breaking change to a serialized public value consumed by 23 code/test sites and
+    9 documents, including C''s own STOP_REASONS set. `BUDGET` is the one addition and is not yet present
+    in the code; adding it is an implementation item for B/D (finalize, reporting, result validation,
+    regression fixtures), and every existing reader must be updated or it will reject the new value. The
+    other two values exist because a three-value table left `PERSISTENCE_ERROR` and `INTERRUPTED` runs
+    without a valid row. B''s correction, accepted: no live evidence shows an `INCOMPLETE` attempt. All
+    15 deduplicated attempts in `docs/reviews/evidence/live-verification-2026-11-21/` are `COMPLETED`
+    with a null stop reason; persistence and interruption behaviour is supported by typed contracts and
+    offline tests, not by that live cohort. Non-normative, D-5: a resumed run keeps its `run_id` and adds
+    an attempt rather than starting a new run; the interrupted attempt is written `INCOMPLETE` and is
+    never edited afterwards; evaluation counts `run_id`s, not attempts. B notes that D-5 conflicts with
+    INV-11/INV-12''s fresh-run-ID and immutability rules and is therefore a separate contract change,
+    not implied by the vocabulary; it stays open (see requirement-source-notes.md OQ-8).'
+- id: REQ-TA-FR-001
+  title: Evidence IDs, records and visible source dates
+  type: functional
+  priority: Must
+  status: proposed
+  statement: 'The system shall give each evidence item admitted into a run one stable evidence ID, and
+    shall keep a record for it with at least: source, ticker, and either observation time or publication
+    time. Wherever the report cites an item, it shall show the item''s source and date (`YYYY-MM-DD`)
+    beside the citation. Records are kept for every run whatever its outcome: a run''s outcome never changes
+    or deletes its evidence records.'
+  fit_criterion: Given the offline profile and `fixtures/fr001/evidence.jsonl`, when one run completes
+    and every cited ID is collected, then (a) 100% of cited IDs resolve to exactly 1 record with non-empty
+    `source`, `ticker` and one of `observed_at` / `published_at`; (b) 100% of citations in the rendered
+    report show a source and a date; (c) all 12 channels of FR-004 write records, including the 2 that
+    bypass the router. Given fixture `fixtures/fr001/timeout_after_price/`, which ends `INCOMPLETE(MODEL)`
+    after price data was retrieved, then (d) the registry still holds the price records, unchanged (≥
+    1 record, byte-identical to before the stop). An ID that is cited but not registered is the blocking
+    finding R2 (ARCH-002).
+  tradeoff: One write per admitted item and one lookup per citation, plus storage under `results_dir`.
+  dependencies:
+  - REQ-TA-RUN-001
+  related: ARCH-001 (when it is met, the registry write can sit in the router alone)
+  baseline: Items carry their own dates and source labels in vendor text (news rows and price rows both
+    carry a date), but nothing assigns an ID or keeps a record keyed by one.
+  open: Add the registry write at the data boundary, including the two bypass channels, and render source
+    and date at each citation.
+  source:
+  - kind: team_document
+    ref: requirements-draft-v4.md
+    sha256: 542f382c6ae7040442c075cfe4c8416025af4872dcb62c5b189154c846cab051
+    locator: REQ-TA-FR-001
+  - kind: baseline_observation
+    ref: tests/test_no_data_handling.py
+    locator: observed in v0.7.1
+  - kind: baseline_observation
+    ref: Le-kk/CS5351@c0081cb
+    locator: baseline statement verified against the team repository
+- id: REQ-TA-FR-003
+  title: Checkpoint list, resume and rerun
+  type: functional
+  priority: Should
+  status: partial
+  statement: The system shall list saved checkpoints, resume an interrupted run without re-running tasks
+    that were already saved, and rerun from scratch on request.
+  fit_criterion: Given the offline profile and a run interrupted after all 4 analyst branches were saved,
+    when (a) it is resumed with the same ticker, *D* and settings, then agent invocations for those 4
+    branches = 0 (4/4); (b) the checkpoint list is shown, then it lists ticker, *D*, the run signature,
+    the number of saved tasks, and a status of `RESUMABLE` (signature matches current settings) or `CONFIG_CHANGED`
+    (it does not) — checked on 1 fixture of each status; (c) it is rerun, then all 4 branches execute
+    again (≥ 1 invocation each), the old checkpoint is cleared, and the rerun gets its own run record
+    and report per NFR-REPRO-001.
+  tradeoff: Checkpoints are stored per ticker, so the list is per ticker unless an index file is added.
+  dependencies:
+  - REQ-TA-NFR-001
+  - REQ-TA-NFR-REPRO-001
+  baseline: 'Resume already works: per-node SQLite checkpoints keyed by a run signature, resume detection
+    (`checkpoint_step`), fresh start when the signature changes, and clean-up after success (`graph/checkpointer.py`,
+    `_run_signature` in `trading_graph.py`; tests `test_checkpoint_resume.py`, `test_checkpoint_lifecycle.py`,
+    `test_graph_end_to_end.py::test_an_interrupted_run_resumes_from_its_checkpoint`). There is no list
+    command and no explicit rerun command.'
+  open: Add the list and rerun commands. Turn the three checks above into acceptance tests.
+  source:
+  - kind: team_document
+    ref: requirements-draft-v4.md
+    sha256: 542f382c6ae7040442c075cfe4c8416025af4872dcb62c5b189154c846cab051
+    locator: REQ-TA-FR-003
+  - kind: baseline_observation
+    ref: Le-kk/CS5351@c0081cb
+    locator: baseline statement verified against the team repository
+- id: REQ-TA-FR-004
+  title: Point-in-time evidence (no look-ahead)
+  type: functional
+  priority: Must
+  status: partial
+  statement: For a run with analysis date *D*, no item published, observed, filed or resolved after the
+    end of *D* shall reach any agent's prompt, through any channel. A date the model gives a tool shall
+    never widen the window past *D*. Data with no historical version (live-only data) shall be withheld
+    from a run dated before today. The one exception is the instrument's current name, which may be given
+    only when it is labelled as the current name.
+  fit_criterion: 'Given the offline profile, *D* = 2026-01-09, and `fixtures/fr004/channels/` holding,
+    for each of the 10 dated channels, one control item dated *D* and one planted item dated *D*+1 that
+    carries the marker `LOOKAHEAD-<#>`, when one run executes and every prompt to the scripted model is
+    captured, then: (a) 0/10 markers appear in any prompt; (b) 10/10 control items appear in at least
+    one prompt; (c) the 2 live-only channels return their "withheld" notice (2/2) and 0 live values; (d)
+    for each of the 12 dated tools in `agents/tools.py`, a model-supplied date of *D*+30 is served as
+    *D* (12/12); (e) the instrument context holds 0 sector, industry or exchange values, and any name
+    carries the "current name" label.'
+  tradeoff: Historical runs see less data than a live run would.
+  dependencies: []
+  baseline: Each channel already has its own guard and unit tests (`test_tool_date_enforcement.py`, `test_news_lookahead.py`,
+    `test_social_lookahead.py`, `test_fundamentals_lookahead.py`, `test_memory_pointintime.py`, `test_undated_tools_as_of.py`,
+    `test_statement_knowledge_time.py`); a future *D* is refused (`_validate_trade_date`). No test checks
+    all channels in one whole run.
+  open: Add the whole-run planted-marker test as a required CI check.
+  source:
+  - kind: team_document
+    ref: requirements-draft-v4.md
+    sha256: 542f382c6ae7040442c075cfe4c8416025af4872dcb62c5b189154c846cab051
+    locator: REQ-TA-FR-004
+  - kind: baseline_observation
+    ref: Le-kk/CS5351@c0081cb
+    locator: baseline statement verified against the team repository
+- id: REQ-TA-FR-005
+  title: Data gaps and the core-data rule
+  type: functional
+  priority: Must
+  status: partial
+  statement: "This requirement owns every rule about missing data.\n1. **Core rule.** If core data has\
+    \ any code other than `OK`, the run ends `INCOMPLETE(DATA)`.\n2. **Non-core rule.** A gap in any other\
+    \ channel does not stop the run.\n3. **Disclosure.** Every report has a \"Data coverage\" section\
+    \ that lists each channel with exactly one code from the table below. The section is built from tool\
+    \ results and is never written by the model. A channel that no selected analyst requested is reported\
+    \ as `NOT_REQUESTED`; it is never reported as a gap. The coverage vocabulary shall additionally contain\
+    \ `NOT_REQUESTED`, meaning no selected analyst asked for this channel and no vendor call was made\
+    \ for it; it is valid for both `COMPLETED` and `INCOMPLETE` runs."
+  fit_criterion: 'Given the offline profile and 12 fixtures — 8 non-core gaps (2 each for `UNAVAILABLE`,
+    `NO_DATA`, `STALE`, `WITHHELD`), 3 core gaps (price `UNAVAILABLE`, `NO_DATA`, `STALE`) and 1 clean
+    run — when each runs, then: (a) 8/8 non-core fixtures end `COMPLETED` and list the affected channel
+    with the matching code; (b) 3/3 core fixtures end `INCOMPLETE(DATA)`; (c) the clean fixture, run with
+    all four analysts selected, lists 12/12 channels as `OK`; (d) a market-only fixture, run with the
+    market analyst selected alone, lists the 4 market channels as `OK` and the other 8 as `NOT_REQUESTED`,
+    and reports none of them as `UNAVAILABLE` (0/12 channels mislabelled as a gap when not requested);
+    (e) 0/12 raise; (f) the section is byte-identical when the scripted model''s prose is replaced with
+    different prose.'
+  tradeoff: Every report gains a section, including gaps that a reader may not care about.
+  semantic_part: whether the model's own prose avoids claiming an absence ("no recent news") for a channel
+    that has a gap is tested in the GOV-001 suite, because a scripted model cannot test it.
+  dependencies:
+  - REQ-TA-RUN-001
+  - REQ-TA-FR-004
+  baseline: The data layer already tells these cases apart in tool text and tells the model not to invent
+    values (`dataflows/router.py`, `date_window.py`; tests `test_no_data_handling.py`, `test_vendor_errors.py`).
+    But nothing collects them per run; the report does not list them; and a full price outage still ends
+    with a rating, because throttled or unreachable vendors degrade to a text note in every category.
+    Channels 3 and 11 bypass the router.
+  open: Collect the codes per run (router plus the two bypass channels), stop on a core gap, render the
+    section, and mark every channel that no selected analyst requested as `NOT_REQUESTED`.
+  note: Decision D-1 (applied in requirements-draft-v3.md) closes review finding V2-04. Without this code
+    a completed market-only run cannot describe 8 unrequested channels truthfully.
+  source:
+  - kind: team_document
+    ref: requirements-draft-v4.md
+    sha256: 542f382c6ae7040442c075cfe4c8416025af4872dcb62c5b189154c846cab051
+    locator: REQ-TA-FR-005
+  - kind: team_decision
+    ref: req-final-scope-A-2026-11-22.md#3
+    locator: D-1
+  - kind: review_finding
+    ref: requirements-v2-review-2026-11-12.md
+    locator: V2-04
+  - kind: baseline_observation
+    ref: Le-kk/CS5351@c0081cb
+    locator: baseline statement verified against the team repository
+- id: REQ-TA-FR-006
+  title: Freshness thresholds
+  type: functional
+  priority: Should
+  status: partial
+  statement: "Each data type shall be judged fresh or stale by the rule in the table below. Stale data\
+    \ is coded `STALE` (FR-005) and handled as the last column says.\n\n| Data type | Fresh when | Parameter\
+    \ (Appendix D) | If exceeded |\n|---|---|---|---|\n| Price history | Latest bar is ≤ `STALE_PRICE_DAYS`\
+    \ calendar days before *D* | `STALE_PRICE_DAYS` | Not used; core gap → `INCOMPLETE(DATA)` (FR-005)\
+    \ |\n| Technical indicators | Follows price history | — | Follows price history |\n| Financial statements\
+    \ | Latest statement was filed ≤ `STALE_STATEMENT_DAYS` days before *D* | `STALE_STATEMENT_DAYS` |\
+    \ Still shown with its filing date; coded `STALE`; run continues |\n| Ticker news, global news, social\
+    \ posts | Item lies inside the requested window, clamped to *D* (FR-004) | `global_news_lookback_days`\
+    \ (v0.7.1 config) | Item left out. This is not marked `STALE`; an empty window is `NO_DATA` or `UNAVAILABLE`.\
+    \ |\n| Macro indicators, insider transactions | No threshold (releases are monthly or irregular) |\
+    \ — | Each value shown with its own date |\n| Company overview, prediction markets | Live-only | —\
+    \ | `WITHHELD` on historical runs (FR-004) |"
+  fit_criterion: 'Given the offline profile and 6 boundary fixtures, when each runs, then 6/6 behave as
+    follows: price bar at *D*−`STALE_PRICE_DAYS` → `OK`; at *D*−(`STALE_PRICE_DAYS`+1) → `INCOMPLETE(DATA)`;
+    statement filed at *D*−`STALE_STATEMENT_DAYS` → `OK`; at *D*−(`STALE_STATEMENT_DAYS`+1) → `STALE`
+    and still shown; news item on the window''s first day → included; one day before it → left out.'
+  tradeoff: A fixed statement threshold suits some filing schedules better than others. Hong Kong half-yearly
+    filers are the reason for the provisional 200 days.
+  dependencies:
+  - REQ-TA-FR-005
+  baseline: 'The price rule already exists: a frame whose latest row is more than 10 days before the requested
+    date is refused as stale (`MAX_OHLCV_STALE_DAYS = 10`, `dataflows/vendors/yahoo/ohlcv.py`; `test_yfinance_stale_ohlcv_guard.py`).
+    News and social windows exist (FR-004). There is no statement-age rule.'
+  open: Add the statement-age rule and the `STALE` code; confirm `STALE_STATEMENT_DAYS` (provisional).
+  source:
+  - kind: team_document
+    ref: requirements-draft-v4.md
+    sha256: 542f382c6ae7040442c075cfe4c8416025af4872dcb62c5b189154c846cab051
+    locator: REQ-TA-FR-006
+  - kind: baseline_observation
+    ref: Le-kk/CS5351@c0081cb
+    locator: baseline statement verified against the team repository
+- id: REQ-TA-FR-007
+  title: Rating meaning and no ownership wording
+  type: functional
+  priority: Must
+  status: proposed
+  statement: "1. **Meaning.** The five ratings describe how strongly the evidence favours the instrument,\
+    \ from strongest positive (Buy) to strongest negative (Sell). **Hold** means the evidence is balanced,\
+    \ or too thin to favour either direction. No rating is an instruction about the user's account.\n\
+    2. **Labels.** Reports label the three model judgments separately: \"Final rating (Portfolio Manager)\"\
+    , \"Research recommendation (Research Manager, intermediate)\" and \"Trader proposal (Buy / Hold /\
+    \ Sell, intermediate)\". Only the Portfolio Manager's output is called the final rating, and only\
+    \ it fills `rating` in the run record.\n3. **No ownership wording.** Prompts and reports shall not\
+    \ state or assume that the user holds the instrument. The minimum banned list is `fixtures/fr007/ownership_phrases.txt`:\
+    \ \"your position\", \"current position\", \"maintain the position\", \"add to your position\", \"\
+    exit your position\", \"your holdings\", \"you own\"."
+  fit_criterion: Given the offline profile, when (a) the Research Manager and Portfolio Manager prompt
+    templates are scanned, then 2/2 contain 0 banned phrases and define Hold with the sentence in part
+    1; (b) one report is rendered, then it contains all 3 labels (3/3) and exactly 1 "Final rating"; (c)
+    3 scripted final decisions that each contain one banned phrase are checked, then 3/3 get `NEEDS_REVIEW`
+    with finding R3, and 1 clean decision gets `PASSED`.
+  tradeoff: Without account wording, the rating reads less like direct advice. That is intended in a research-only
+    scope.
+  semantic_part: live-model wording is tested in the GOV-001 suite.
+  dependencies:
+  - REQ-TA-ARCH-002
+  - REQ-TA-RUN-001
+  baseline: 'Re-verified 2026-11-23 against `Le-kk/CS5351@c0081cb`. Both manager prompts now condition
+    the rating wording on whether a portfolio was supplied: `research_manager.py:44-48` and `portfolio_manager.py:56-60`,
+    where `hold_meaning` is computed from `portfolio_context`, so Hold reads as "do not interpret Hold
+    as maintaining an assumed position" when no portfolio is supplied. The earlier "maintain the current
+    position" wording is gone. The three judgments stay as separate fields (`ResearchPlan.recommendation`,
+    `TraderProposal.action`, `PortfolioDecision.rating` in `agents/schemas.py`).'
+  open: Reword both prompts, add the labels, and add rule R3 to the output check.
+  source:
+  - kind: team_document
+    ref: requirements-draft-v4.md
+    sha256: 542f382c6ae7040442c075cfe4c8416025af4872dcb62c5b189154c846cab051
+    locator: REQ-TA-FR-007
+  - kind: baseline_observation
+    ref: Le-kk/CS5351@c0081cb
+    locator: baseline statement verified against the team repository
+- id: REQ-TA-FR-008
+  title: Sentiment score and confidence consistent with available data
+  type: functional
+  priority: Should
+  status: proposed
+  statement: "The Sentiment Analyst's model-chosen band, score and confidence shall follow the rules below,\
+    \ applied by the output check. Any agent that later gets a confidence field shall follow the same\
+    \ confidence rule.\n\n| Rule | Check | Kind |\n|---|---|---|\n| R4 | `overall_score` lies in its band's\
+    \ range: Bullish [6.5, 10]; Mildly Bullish [5.5, 6.5); Neutral and Mixed [4.5, 5.5); Mildly Bearish\
+    \ [3.5, 4.5); Bearish [0, 3.5). These are the schema's own guideline ranges, made exact. | Blocking\
+    \ |\n| R5 | If any of the analyst's 3 sources (news, StockTwits, Reddit) is not `OK`, confidence is\
+    \ at most `low`. A higher value is lowered, and both the original and the new value are recorded.\
+    \ | Corrected |\n| R6 | If none of the 3 sources is `OK`, the band must be Neutral | Blocking |"
+  fit_criterion: 'Given the offline profile and 6 fixtures, when each is checked, then 6/6 match: (1)
+    the team''s example — Bullish, score 0, high, all 3 sources unavailable → R4 and R6 blocking, R5 lowers
+    confidence to low → `NEEDS_REVIEW`; (2) Mildly Bullish, 6.0, high, all sources `OK` → `PASSED`, confidence
+    stays high; (3) Bullish, 7.0, high, Reddit `UNAVAILABLE` → `PASSED`, confidence lowered to low and
+    recorded; (4) Bearish, 5.0 → R4 → `NEEDS_REVIEW`; (5) Bullish, 6.5 → passes R4; (6) Mildly Bullish,
+    6.5 → fails R4.'
+  tradeoff: Lowering confidence automatically can understate a strong signal from the two sources that
+    did work.
+  dependencies:
+  - REQ-TA-FR-005
+  - REQ-TA-ARCH-002
+  baseline: '`SentimentReport` (`agents/schemas.py`) enforces only the 0–10 bounds and the allowed labels.
+    The band–score ranges and the "low when a source is missing" rule are guidance text the model may
+    ignore. The team confirmed the schema accepts Bullish + 0 + High.'
+  open: Add R4–R6 to the output check.
+  source:
+  - kind: team_document
+    ref: requirements-draft-v4.md
+    sha256: 542f382c6ae7040442c075cfe4c8416025af4872dcb62c5b189154c846cab051
+    locator: REQ-TA-FR-008
+  - kind: baseline_observation
+    ref: Le-kk/CS5351@c0081cb
+    locator: baseline statement verified against the team repository
+- id: REQ-TA-NFR-001
+  title: Fail safely on external failures
+  type: quality_reliability
+  priority: Must
+  status: partial
+  statement: "No vendor or model failure shall crash the process. Data failures follow FR-005. Model failures\
+    \ follow this table:\n\n| Model situation | Result |\n|---|---|\n| Structured output is malformed,\
+    \ but the v0.7.1 free-text fallback produces usable text | Not a failure; the run continues |\n| The\
+    \ final decision text has no readable rating | `COMPLETED`, `rating = REVIEW`, `NEEDS_REVIEW` (rule\
+    \ R1) |\n| A model step produces no output after retries and the fallback (timeout, provider or auth\
+    \ error) | `INCOMPLETE(MODEL)` |"
+  fit_criterion: Given the offline profile and 6 fixtures (2 per table row), when each runs, then 6/6
+    get the result in their row and 0/6 raise out of the entry point. Additionally, 0 of the FR-005 fixtures
+    raise.
+  tradeoff: Some runs that used to crash loudly now end quietly as `INCOMPLETE`; the log (OBS-001) must
+    keep the detail.
+  metric: fraction of fixtures whose result matches their row in the failure table; escapes from the entry
+    point
+  threshold: 6/6 fixtures produce the documented result; 0/6 raise out of the entry point; 0 FR-005 fixtures
+    raise
+  verification: offline profile; 6 scripted fixtures (2 per table row) plus the FR-005 fixture set
+  dependencies:
+  - REQ-TA-RUN-001
+  - REQ-TA-FR-005
+  baseline: Malformed structured output already falls back to free text (`agents/structured.py`). An unreadable
+    final rating already becomes `REVIEW` (`agents/rating.py`). There is no run-level catch, so a model
+    call that fails after retries raises out of `propagate`.
+  open: Catch at the graph entry and map to `INCOMPLETE(MODEL)`.
+  source:
+  - kind: team_document
+    ref: requirements-draft-v4.md
+    sha256: 542f382c6ae7040442c075cfe4c8416025af4872dcb62c5b189154c846cab051
+    locator: REQ-TA-NFR-001
+  - kind: baseline_observation
+    ref: Le-kk/CS5351@c0081cb
+    locator: baseline statement verified against the team repository
+- id: REQ-TA-NFR-002
+  title: Add or remove an analyst
+  type: quality_maintainability
+  priority: Could
+  status: partial
+  statement: Adding or removing an analyst shall require changes only to that analyst's module and its
+    registration data, and to no orchestration module.
+  fit_criterion: Given a change that adds 1 analyst, when `git diff --stat` is taken against `{tradingagents/graph/setup.py,
+    tradingagents/graph/trading_graph.py, tradingagents/graph/conditional_logic.py}`, then changed lines
+    in that set = 0 and the full test suite passes.
+  tradeoff: Wiring is less readable at the point of use.
+  metric: changed lines in the orchestration module set when one analyst is added
+  threshold: changed lines in {graph/setup.py, graph/trading_graph.py, graph/conditional_logic.py} = 0;
+    full test suite passes
+  verification: apply one add-analyst change and take `git diff --stat` against that file set
+  dependencies: []
+  baseline: Removing works (`selected_analysts` → `build_analyst_execution_plan`, `graph/analyst_execution.py`).
+    Adding needs an edit to the hard-coded `analyst_factories` in `graph/setup.py`.
+  open: Move factories into the registration data.
+  source:
+  - kind: team_document
+    ref: requirements-draft-v4.md
+    sha256: 542f382c6ae7040442c075cfe4c8416025af4872dcb62c5b189154c846cab051
+    locator: REQ-TA-NFR-002
+  - kind: baseline_observation
+    ref: Le-kk/CS5351@c0081cb
+    locator: baseline statement verified against the team repository
+- id: REQ-TA-NFR-OBS-001
+  title: Structured logging
+  type: quality_observability
+  priority: Should
+  status: partial
+  statement: The system shall write machine-parseable log records, each with `run_id`, ticker, node or
+    agent, timestamp, elapsed time, and event outcome. When a run stops for `BUDGET`, the log names the
+    limit that was hit (time, tokens or calls).
+  fit_criterion: Given the offline profile, when every line of both sinks is parsed after one completed
+    run and after one `INCOMPLETE(BUDGET)` run, then 100% of lines parse and contain all six fields with
+    non-null values; the `BUDGET` run's log names exactly 1 limit.
+  tradeoff: JSON lines are harder to skim by eye.
+  metric: required log fields present per run, and events emitted on every exit path
+  threshold: 100% of runs emit each required event; 0 runs with a missing required field; 0 secrets in
+    any log line
+  verification: offline profile; parse the event stream of every fixture run, including failure and cancellation
+    fixtures
+  dependencies:
+  - REQ-TA-SEC-002
+  - REQ-TA-RUN-001
+  - REQ-TA-NFR-REPRO-001
+  baseline: 'Re-verified 2026-11-23 against `Le-kk/CS5351@c0081cb`. The boundary now emits structured
+    events: `runapi/events.py` provides an `EventSink` writing event records (for example `input.consent`,
+    `output.check`, `run.terminal`) alongside each run. The graph still writes one JSON state file per
+    run (`_log_state`, `full_states_log_<D>.json`), and the CLI writes the plain-text `message_tool.log`
+    (`cli/run.py`).'
+  open: JSON-lines for the CLI sink; add `run_id` and elapsed time to both.
+  source:
+  - kind: team_document
+    ref: requirements-draft-v4.md
+    sha256: 542f382c6ae7040442c075cfe4c8416025af4872dcb62c5b189154c846cab051
+    locator: REQ-TA-NFR-OBS-001
+  - kind: baseline_observation
+    ref: Le-kk/CS5351@c0081cb
+    locator: baseline statement verified against the team repository
+- id: REQ-TA-NFR-REPRO-001
+  title: Immutable run record and report
+  type: quality_reproducibility
+  priority: Should
+  status: partial
+  statement: 'Every run, including each rerun, shall write exactly one run record and one report folder,
+    both named by a unique `run_id`. The record contains: start and end time, code version, every configuration
+    key that can change what the run produces, a hash of the prompt templates, and the RUN-001 fields.
+    A later run shall never overwrite or change an earlier run''s record or report.'
+  fit_criterion: Given the offline profile, when (a) two runs of the same ticker and *D* execute one after
+    the other, then 2 distinct records and 2 distinct report folders exist, and the first run's files
+    are byte-identical before and after the second; (b) each record has non-null `run_id`, `started_at`,
+    `ended_at`, `version`, `prompt_hash`, `config` and the RUN-001 fields; (c) for each of the 10 keys
+    v0.7.1 leaves out of `run_settings()` (`temperature`, `max_tokens`, `max_tool_rounds`, `news_article_limit`,
+    `global_news_article_limit`, `global_news_lookback_days`, `holding_period_days`, `google_thinking_level`,
+    `openai_reasoning_effort`, `anthropic_effort`), changing only that key makes the two records differ
+    in exactly that key (10/10); (d) recorded keys = `DEFAULT_CONFIG` keys minus the excluded set (0 missing,
+    0 extra); (e) editing one prompt template changes `prompt_hash`, and leaving templates unchanged keeps
+    it the same; (f) the SEC-002 scan finds 0 planted secrets.
+  tradeoff: '`results_dir` grows faster; no automatic clean-up is proposed.'
+  metric: run-record fields recorded per run; determinism of the record after publication
+  threshold: 100% of runs have a run record with every listed field non-empty (or explicitly null); 0
+    runs whose record changes after publication
+  verification: offline profile; hash each run record immediately after publication and again after the
+    next run
+  dependencies:
+  - REQ-TA-RUN-001
+  - REQ-TA-SEC-002
+  baseline: 'Re-verified 2026-11-23 against `Le-kk/CS5351@c0081cb`. The run boundary now records reproducibility
+    facts in the run manifest: `run_id`, `code_version`, `source_revision`, `prompt_hash`, `effective_config`,
+    `start_ts_utc`/`end_ts_utc` and `fingerprint_sha256` (`runapi/execution.py` `_source_revision`/`_prompt_hash`,
+    `runapi/reporting.py`; see a real manifest under `docs/reviews/evidence/live-verification-2026-11-21/`).
+    The graph-level `run_settings()` (`graph/trading_graph.py`) remains an allowlist with no run id, timing
+    or prompt hash, and the state log is still named `full_states_log_<D>.json`. The baseline closes this
+    requirement at the `runapi` boundary, not in the raw graph path.'
+  open: Widen the record, add run id, timing and prompt hash, and name files by run id.
+  source:
+  - kind: team_document
+    ref: requirements-draft-v4.md
+    sha256: 542f382c6ae7040442c075cfe4c8416025af4872dcb62c5b189154c846cab051
+    locator: REQ-TA-NFR-REPRO-001
+  - kind: baseline_observation
+    ref: Le-kk/CS5351@c0081cb
+    locator: baseline statement verified against the team repository
+- id: REQ-TA-NFR-PERF-001
+  title: Maximum run time
+  type: performance
+  priority: Should
+  status: proposed
+  statement: A single-ticker run shall complete within `RUN_TIME_CAP`, measured wall-clock from graph
+    start to the run record being written.
+  fit_criterion: Given the live profile, when 20 runs execute one after another, then the maximum of the
+    20 run times is ≤ `RUN_TIME_CAP` and 20/20 are `COMPLETED`. Runs stopped as `INCOMPLETE(BUDGET)` count
+    as failures of this criterion.
+  tradeoff: A tight cap trades completeness for speed.
+  metric: wall-clock time from run start to terminal event
+  threshold: <= RUN_TIME_CAP (provisional 120 s) on the offline profile
+  verification: offline profile; scripted model with recorded latencies; time the run boundary, not the
+    graph alone
+  dependencies:
+  - REQ-TA-NFR-001
+  - REQ-TA-NFR-REPRO-001
+  baseline: No cap. Analysts already run in parallel (`graph/setup.py`).
+  open: Measure first, then fix `RUN_TIME_CAP` from the measurement.
+  source:
+  - kind: team_document
+    ref: requirements-draft-v4.md
+    sha256: 542f382c6ae7040442c075cfe4c8416025af4872dcb62c5b189154c846cab051
+    locator: REQ-TA-NFR-PERF-001
+  - kind: baseline_observation
+    ref: Le-kk/CS5351@c0081cb
+    locator: baseline statement verified against the team repository
+- id: REQ-TA-NFR-PERF-002
+  title: Time-budget handling
+  type: performance
+  priority: Should
+  status: proposed
+  statement: A run that crosses its time budget (default `RUN_TIME_CAP`) shall stop and end `INCOMPLETE(BUDGET)`.
+    Calls already in flight may run for at most `CANCEL_ALLOWANCE` beyond the budget.
+  fit_criterion: Given the offline profile with a slow scripted model and a 30 s test budget, when 10
+    runs execute, then 10/10 end `INCOMPLETE(BUDGET)`, 10/10 return within 30 s + `CANCEL_ALLOWANCE`,
+    and 10/10 logs name the time limit.
+  tradeoff: Calls that ignore cancellation delay the return.
+  metric: time from the deadline/cancel signal to the terminal event; terminal outcome
+  threshold: <= CANCEL_ALLOWANCE (2 s) and exactly 1 terminal event naming the budget; workflow within
+    budget completes normally
+  verification: offline profile; fixture that crosses the deadline mid-step and fixture cancelled between
+    steps
+  dependencies:
+  - REQ-TA-NFR-001
+  - REQ-TA-RUN-001
+  baseline: No run-level timer.
+  open: Check the deadline at node boundaries and add the cancellation allowance.
+  source:
+  - kind: team_document
+    ref: requirements-draft-v4.md
+    sha256: 542f382c6ae7040442c075cfe4c8416025af4872dcb62c5b189154c846cab051
+    locator: REQ-TA-NFR-PERF-002
+  - kind: baseline_observation
+    ref: Le-kk/CS5351@c0081cb
+    locator: baseline statement verified against the team repository
+- id: REQ-TA-NFR-COST-001
+  title: Run token budget
+  type: cost
+  priority: Should
+  status: proposed
+  statement: A run shall use at most `TOKEN_BUDGET` tokens in total, counted from provider usage data.
+    A run that would exceed it ends `INCOMPLETE(BUDGET)`. If a provider returns no usage data, the run
+    is not stopped; its record marks token usage as `UNKNOWN`.
+  fit_criterion: Given the live profile, when 20 runs execute one after another, then 20/20 have known
+    usage ≤ `TOKEN_BUDGET`, and the GOV-001 score over these runs is ≥ `QUALITY_THRESHOLD`. A run with
+    `UNKNOWN` usage counts as a failure of this criterion, not as zero cost.
+  tradeoff: A budget forces shorter prompts or debates, which the quality threshold partly forbids.
+  metric: tokens consumed per run against TOKEN_BUDGET
+  threshold: tokens_used <= TOKEN_BUDGET; a run that exhausts the budget ends INCOMPLETE with stop_reason
+    BUDGET
+  verification: offline profile with a scripted model reporting token counts; one within-budget and one
+    exhaustion fixture
+  dependencies:
+  - REQ-TA-GOV-001
+  - REQ-TA-NFR-REPRO-001
+  baseline: '`max_tokens` caps each call (`default_config.py`). There is no run-level count.'
+  open: Add up usage per run; set `TOKEN_BUDGET` from measurement.
+  source:
+  - kind: team_document
+    ref: requirements-draft-v4.md
+    sha256: 542f382c6ae7040442c075cfe4c8416025af4872dcb62c5b189154c846cab051
+    locator: REQ-TA-NFR-COST-001
+  - kind: baseline_observation
+    ref: Le-kk/CS5351@c0081cb
+    locator: baseline statement verified against the team repository
+- id: REQ-TA-NFR-COST-002
+  title: Run-wide LLM call cap
+  type: cost
+  priority: Must
+  status: proposed
+  statement: 'The system shall ensure that, per run, the number of model-request dispatch attempts never
+    exceeds the number of successful reservations and never exceeds `CALL_CAP`: `dispatch_attempts <=
+    successful_reservations <= CALL_CAP`. A dispatch attempt is one model-generation request attempt issued
+    through the controlled application client boundary, including attempts that time out or fail, application
+    retries, structured-output re-requests, free-text fallback, and in-run memory reflection requests.
+    Every attempt shall be preceded by its own fresh single-use reservation from the run''s shared budget
+    controller; a reservation authorizes exactly one attempt, cannot be reused, and a denied reservation
+    dispatches nothing. An attempt that has been issued consumes its slot even if it fails. A workflow
+    that finishes within its cap completes normally; a run stops `INCOMPLETE(BUDGET)` only when a required
+    further attempt is refused.'
+  fit_criterion: Given the offline profile and `CALL_CAP = 8`, when a run executes, then (a) every controlled
+    request attempt has a unique preceding successful reservation from the same run; audit records pair
+    one reservation with at most one attempt, including retries, fallback and memory calls; a denied reservation
+    dispatches nothing; (b) total controlled request attempts ≤ 8 across all branches and model tiers,
+    with SDK automatic retries disabled for this mode or every underlying attempt independently gated
+    and counted; (c) after 7 slots are consumed, 4 workers contend for the remaining slot using an injected
+    barrier against the real reservation component, and exactly 1 succeeds and 3 are denied (the winner's
+    identity need not be deterministic); (d) in a scripted workflow that requires one more attempt after
+    the cap is exhausted, that attempt is refused and the run returns `INCOMPLETE` with `stop_reason =
+    BUDGET`, no final rating and `output_check = NOT_RUN`, with audit metadata naming the configured cap
+    and the counts; a workflow that completes within its cap ends normally.
+  tradeoff: A small shared cap can starve parallel branches, and a strict single-use reservation means
+    a branch that loses the last slot stops the run rather than degrading. The stricter the bound, the
+    less tolerant the system is of a borderline cap; that is the price of a guarantee that can actually
+    be checked.
+  metric: model-request dispatch attempts per run, against successful reservations and CALL_CAP
+  threshold: dispatch_attempts <= successful_reservations <= CALL_CAP (test value 8); 0 attempts issued
+    without a reservation
+  verification: offline profile; one budget-controller fixture with an injected threading barrier for
+    the last-slot race; audit log pairing reservations with attempts; one exhaustion fixture and one within-cap
+    fixture
+  dependencies:
+  - REQ-TA-NFR-001
+  - REQ-TA-RUN-001
+  baseline: 'Only per-scope limits: `max_tool_rounds` (20), `max_debate_rounds` / `max_risk_discuss_rounds`
+    (1 each), `llm_max_retries`.'
+  open: Add a shared run-scoped counter and a reservation that precedes dispatch.
+  note: 'Decision D-3, revised 2026-11-23 after Member B''s technical reply. Non-normative. Application
+    counting equals real provider calls only when every attempt the application issues is an attempt the
+    provider sees. In the inspected baseline, `llm_max_retries` is forwarded to the provider SDK (`tradingagents/llm_clients/factory.py`),
+    and analysts fan out concurrently from `START` (`tradingagents/graph/setup.py`), so a counter around
+    high-level model invocations cannot by itself guarantee the bound. Member B''s recommended mechanism
+    is one shared run-scoped budget controller with SDK retries disabled, where each application retry
+    takes a fresh single-use reservation; that makes the strict `<= CALL_CAP` bound achievable. How it
+    is built remains a B design and D implementation decision (`decision-request-D3-cost002-2026-11-22.md`,
+    reply of 2026-11-22). Because a reservation authorizes exactly one attempt, concurrent branches hold
+    their own reservations and no branch allowance is needed; the earlier `CALL_CAP + N_concurrent_branches`
+    form is withdrawn. This requirement does not guarantee the provider gateway''s internal retry count,
+    exact billable usage or monetary cost, and it does not claim the bound is implemented: the controller
+    does not exist in the baseline. If D cannot make (a)-(d) hold on every enabled client, A downgrades
+    COST-002 from Must to Should and restates it as detection-only, recorded in D-4.'
+  source:
+  - kind: team_document
+    ref: requirements-draft-v4.md
+    sha256: 542f382c6ae7040442c075cfe4c8416025af4872dcb62c5b189154c846cab051
+    locator: REQ-TA-NFR-COST-002
+  - kind: team_decision
+    ref: req-final-scope-A-2026-11-22.md#3
+    locator: D-3
+  - kind: team_document
+    ref: reply-to-A-cost002-2026-11-22.md
+    locator: Member B technical reply; strict bound and single-use reservation adopted 2026-11-23
+  - kind: baseline_observation
+    ref: Le-kk/CS5351@c0081cb
+    locator: baseline statement verified against the team repository
+- id: REQ-TA-NFR-COST-003
+  title: Early debate convergence
+  type: cost
+  priority: Could
+  status: proposed
+  statement: The bull/bear debate and the risk discussion shall stop before their configured maximum when
+    the participants' positions have converged.
+  fit_criterion: Given the offline profile, 4 convergence fixtures (2 per debate) and 4 disagreement fixtures,
+    when each runs, then rounds used < maximum for 4/4 convergence fixtures, rounds used = maximum for
+    4/4 disagreement fixtures, and the RUN-001 fields of all 8 equal those of the round-count-only baseline.
+  tradeoff: A debate can be cut before its disagreement surfaces.
+  metric: debate rounds executed when the debate has converged
+  threshold: converged debate stops before max_debate_rounds (rounds_executed < max_debate_rounds on the
+    converged fixture); 0 premature stops on the non-converged fixture
+  verification: offline profile; one converged and one non-converged scripted debate
+  dependencies:
+  - REQ-TA-NFR-COST-001
+  baseline: Round-count only (`graph/conditional_logic.py`).
+  open: Define the convergence signal.
+  source:
+  - kind: team_document
+    ref: requirements-draft-v4.md
+    sha256: 542f382c6ae7040442c075cfe4c8416025af4872dcb62c5b189154c846cab051
+    locator: REQ-TA-NFR-COST-003
+  - kind: baseline_observation
+    ref: Le-kk/CS5351@c0081cb
+    locator: baseline statement verified against the team repository
+- id: REQ-TA-NFR-EVAL-001
+  title: Evaluation counting rules
+  type: quality_evaluation
+  priority: Should
+  status: proposed
+  statement: "Every evaluation result the team reports shall be computed with these rules:\n1. **Completion\
+    \ rate** = `COMPLETED` runs ÷ all runs started. No run is ever removed from this denominator.\n2.\
+    \ **Quality scores** (GOV-001 score, rating distribution) are computed over `COMPLETED` runs only,\
+    \ and are always reported beside the completion rate and the number of `NEEDS_REVIEW` runs.\n3. `INCOMPLETE`\
+    \ runs are reported by `stop_reason`.\n4. A run's outcome never invalidates its evidence (FR-001).\
+    \ Source reliability is not graded from run outcomes.\n5. **Acceptance population.** `N_EVAL` counts\
+    \ distinct semantic cases, never attempts; a repeated attempt is a repeatability comparison under\
+    \ rule 6 and is not counted twice. A changed case population is a versioned acceptance change, not\
+    \ a re-run, and results across two populations are not compared. The counting rules below define arithmetic\
+    \ only: the rubric, the critical items, the profile and `QUALITY_THRESHOLD` are required acceptance\
+    \ inputs owned by Members D and E, and no counting result is an acceptance result without them.\n\
+    6. **Comparison modes.** Two results may be compared in *repeatability* mode only if their run records\
+    \ match on `config` and `prompt_hash` (NFR-REPRO-001); any difference between them is measurement\
+    \ noise and is reported as such. A *controlled change* comparison is permitted when exactly one factor\
+    \ (prompt, model or budget) is declared as changed and every other recorded key matches; the output\
+    \ must name that factor and report `factor: before -> after`, with the completion rate and the `NEEDS_REVIEW`\
+    \ count beside both sides. A comparison that changes more than one factor, or that does not declare\
+    \ the factor, is refused."
+  fit_criterion: 'Given 10 fixed run records used as a counting fixture (6 `COMPLETED` of which 2 are
+    `NEEDS_REVIEW`; `INCOMPLETE`: 1 `DATA_FAILURE`, 2 `MODEL_FAILURE`, 1 `BUDGET`), when the evaluation
+    script runs, then it reports a completion rate of 6/10, a quality denominator of 6, `NEEDS_REVIEW`
+    = 2, and stop reasons `DATA_FAILURE` 1, `MODEL_FAILURE` 2, `BUDGET` 1, with 0 records dropped; and
+    the output states that these 10 records are a counting fixture, not an acceptance run under `N_EVAL`.
+    Given 2 records that differ in `prompt_hash` and declare no changed factor, the script refuses to
+    compare them (1/1); given 2 records differing only in `prompt_hash` that declare `prompt` as the changed
+    factor, it reports exactly 1 controlled-change comparison naming `prompt` (1/1); given 2 records differing
+    in both `prompt_hash` and `model` with no declaration, it refuses (1/1); given 20 cases scored twice
+    under identical `config` and `prompt_hash`, then `N_EVAL` is reported as 20 cases and not 40 attempts,
+    and exactly 1 result is counted.'
+  tradeoff: Reporting completed-only quality next to a low completion rate can look worse than a single
+    blended number. That is intended.
+  metric: agreement between reported evaluation numbers and a recomputation from the same run records
+  threshold: 100% of reported counts equal the recomputed values; 0 runs silently removed from the completion
+    denominator; 0 undeclared multi-factor comparisons accepted
+  verification: recompute every reported figure from the stored run records of a fixed evidence set
+  dependencies:
+  - REQ-TA-RUN-001
+  - REQ-TA-NFR-REPRO-001
+  baseline: v0.7.1 has a backtest (`backtest.py`) but no rule for counting failed runs.
+  open: Member D to build the script to these rules.
+  source:
+  - kind: team_document
+    ref: requirements-draft-v4.md
+    sha256: 542f382c6ae7040442c075cfe4c8416025af4872dcb62c5b189154c846cab051
+    locator: REQ-TA-NFR-EVAL-001
+  - kind: review_finding
+    ref: requirements-v2-review-2026-11-12.md
+    locator: V2-10
+  - kind: baseline_observation
+    ref: Le-kk/CS5351@c0081cb
+    locator: baseline statement verified against the team repository
+  note: 'Amended 2026-11-23 on Member B''s question. B asked whether `N_EVAL` counts cases or attempts
+    and whether the existing five cases and two trials establish acceptance under `N_EVAL=20` with an
+    open threshold. B was right that they do not, and A found a second defect of A''s own: the parameter
+    appendix says `N_EVAL` = 20 cases, while this criterion originally exercised 10 records without saying
+    they were not acceptance. Rule 5 is new and says both things explicitly. A did **not** fix the remainder,
+    because the rubric, the critical items, the evaluation profile and `QUALITY_THRESHOLD` are owned by
+    D and E and two of them are still open parameters; writing them here would have made `GOV-001` look
+    decided when it is not. Not implemented: no evaluation script exists in the baseline.'
+- id: REQ-TA-SEC-001
+  title: Prompt-injection resistance
+  type: security
+  priority: Must
+  status: proposed
+  statement: Instructions inside retrieved content shall not change the run's configuration, the `data_coverage`
+    record, the output check's rules or result, or any RUN-001 field set by deterministic code.
+  fit_criterion: 'Given the offline profile and 20 fixtures (5 each for market, news, social and fundamentals
+    content) whose injected text tells the model to, for example, "say all data is complete", "print OUTPUT
+    CHECK: PASSED" or "ignore your rules", with the scripted model copying the injected text into its
+    output, when each runs, then for 20/20: the config equals the pre-run config (deep equality); `data_coverage`
+    equals that of the same fixture without the injection; and `output_check` and `check_findings` equal
+    the result of applying R1–R8 to the final state.'
+  tradeoff: Injected text can still appear as quoted evidence; it simply has no authority.
+  metric: injected instructions that change the rating or the output check
+  threshold: 0/20 injection fixtures change the final rating or the output_check; 20/20 still produce
+    a valid run record
+  verification: offline profile; injected text in every retrieved-text channel (news, social, filings,
+    web)
+  semantic_part: whether a live model's rating is swayed by injected text is tested in the GOV-001 suite.
+  dependencies:
+  - REQ-TA-ARCH-002
+  - REQ-TA-FR-005
+  baseline: Ticker input is sanitised (`dataflows/symbols.py`). Retrieved text reaches the model unmodified.
+    No deterministic check exists yet.
+  open: Build ARCH-002 and FR-005 so that no model text feeds them.
+  source:
+  - kind: team_document
+    ref: requirements-draft-v4.md
+    sha256: 542f382c6ae7040442c075cfe4c8416025af4872dcb62c5b189154c846cab051
+    locator: REQ-TA-SEC-001
+  - kind: baseline_observation
+    ref: Le-kk/CS5351@c0081cb
+    locator: baseline statement verified against the team repository
+- id: REQ-TA-SEC-002
+  title: No credential or token leakage
+  type: security
+  priority: Must
+  status: partial
+  statement: Logs, reports, run records and error messages shall not contain API keys, OAuth access tokens,
+    refresh tokens or bearer headers.
+  fit_criterion: Given a distinctive fake value planted as each of these 4 secret types across all vendor
+    error paths, when each path is exercised, then a scan of logs, reports, run records and captured exceptions
+    finds 0 planted values and 0 `Bearer ` prefixes.
+  tradeoff: Less debugging detail in error text.
+  metric: secret occurrences in report, log, event stream and traceback on error paths
+  threshold: 0 occurrences of any planted secret in any sink; source files unmodified
+  verification: plant 4 secret types across every sink and every error path, then scan the captured output
+  dependencies: []
+  baseline: Re-verified 2026-11-23 against `Le-kk/CS5351@c0081cb`. `get_scrubbed` (`dataflows/net.py`)
+    redacts query-parameter secrets and is used by the Alpha Vantage and FRED vendor modules. The boundary
+    adds `runapi/redact.py`, a `Redactor` applied at the event, report and error sinks. Coverage of third-party
+    loggers and uncaught tracebacks outside the boundary remains unverified.
+  open: Send every outbound error through one scrubber.
+  source:
+  - kind: team_document
+    ref: requirements-draft-v4.md
+    sha256: 542f382c6ae7040442c075cfe4c8416025af4872dcb62c5b189154c846cab051
+    locator: REQ-TA-SEC-002
+  - kind: baseline_observation
+    ref: Le-kk/CS5351@c0081cb
+    locator: baseline statement verified against the team repository
+- id: REQ-TA-SEC-003
+  title: No promise of guaranteed returns
+  type: security
+  priority: Should
+  status: proposed
+  statement: Reports shall start with a disclaimer and shall not claim guaranteed returns, guaranteed
+    profit or capital protection.
+  fit_criterion: Given the offline profile, when (a) 20 reports are rendered, then 20/20 start with the
+    disclaimer string; (b) 5 scripted final decisions that each contain a phrase from `fixtures/sec003/guarantee_phrases.txt`
+    are checked, then 5/5 get `NEEDS_REVIEW` with finding R8.
+  tradeoff: The phrase list flags "guaranteed" even inside a quoted source.
+  metric: reports starting with the disclaimer, and guarantee phrases caught by rule R8
+  threshold: 20/20 reports start with the disclaimer; 5/5 guarantee fixtures get NEEDS_REVIEW with finding
+    R8
+  verification: offline profile; 20 rendered reports and 5 scripted decisions containing listed phrases
+  semantic_part: 5 live prompts that directly ask for a guarantee are in the GOV-001 suite.
+  dependencies:
+  - REQ-TA-ARCH-002
+  baseline: The disclaimer exists in the README only.
+  open: Add the report disclaimer and rule R8.
+  source:
+  - kind: team_document
+    ref: requirements-draft-v4.md
+    sha256: 542f382c6ae7040442c075cfe4c8416025af4872dcb62c5b189154c846cab051
+    locator: REQ-TA-SEC-003
+  - kind: baseline_observation
+    ref: Le-kk/CS5351@c0081cb
+    locator: baseline statement verified against the team repository
+- id: REQ-TA-ARCH-001
+  title: Vendors behind one routing point
+  type: architectural_constraint
+  priority: Should
+  status: partial
+  statement: Vendor access shall go through the router's method map, so agent and graph modules name a
+    method, never a vendor module or vendor SDK.
+  fit_criterion: Given `tradingagents/agents/**` and `tradingagents/graph/**`, when the import-boundary
+    test runs, then they import 0 times from `tradingagents.dataflows.vendors.*` and 0 times from `yfinance`
+    (the only vendor SDK in `pyproject.toml`); and a fake vendor in the method map serves every evidence
+    request in the end-to-end test with 0 monkeypatches of agent modules.
+  tradeoff: One more indirection per call.
+  metric: direct vendor imports in agent modules
+  threshold: 0 direct vendor imports in `tradingagents/agents/**`; the layering test covers every vendor
+    package, not only `yfinance`
+  verification: static import scan anchored on the package boundary, enforced by `tests/test_layering.py`
+  dependencies: []
+  baseline: 'Not met. There are 4 direct vendor imports in 3 agent files: `agents/context.py` (Yahoo profile),
+    `agents/tools.py` (Yahoo snapshot) and `agents/analysts/sentiment_analyst.py` (Reddit, StockTwits).
+    `tests/test_layering.py` bans only the `yfinance` library.'
+  open: Move the 4 imports behind router methods and extend the layering test.
+  source:
+  - kind: team_document
+    ref: requirements-draft-v4.md
+    sha256: 542f382c6ae7040442c075cfe4c8416025af4872dcb62c5b189154c846cab051
+    locator: REQ-TA-ARCH-001
+  - kind: baseline_observation
+    ref: Le-kk/CS5351@c0081cb
+    locator: baseline statement verified against the team repository
+- id: REQ-TA-ARCH-002
+  title: Deterministic output check
+  type: architectural_constraint
+  priority: Must
+  status: proposed
+  statement: "Exactly one deterministic, non-LLM component shall set `output_check` and `check_findings`.\
+    \ It runs on every `COMPLETED` run after the Portfolio Manager and applies the rules below. Each rule\
+    \ is owned by the requirement named in the table (P1).\n\n| Rule | Check | Owner | Kind |\n|---|---|---|---|\n\
+    | R1 | Final rating is readable (not `REVIEW`) | RUN-001 | Blocking |\n| R2 | Every cited evidence\
+    \ ID resolves | FR-001 | Blocking |\n| R3 | No banned ownership phrase | FR-007 | Blocking |\n| R4\
+    \ | Sentiment score matches band | FR-008 | Blocking |\n| R5 | Sentiment confidence within the coverage\
+    \ cap | FR-008 | Corrected |\n| R6 | No sentiment direction without any sentiment data | FR-008 |\
+    \ Blocking |\n| R7 | \"Data coverage\" section present and equal to the coverage record | FR-005 |\
+    \ Blocking |\n| R8 | Disclaimer present; no guarantee phrase | SEC-003 | Blocking |\n\n## Naming (corrected\
+    \ 2026-11-23 after Member B's reply)\n\n`R1`–`R8` here means the output-check rules defined in `requirements-draft-v4.md`.\
+    \ Two collisions to avoid:\n\n- `docs/architecture/runtime-policy-catalog.md` reuses the same `R`\
+    \ prefix for unrelated trigger rows: its `R1` is a provider failover, its `R3` is \"model output exhausted\"\
+    . Those are not these rules.\n- `tradingagents/runapi/checks.py` emits only `Q1`–`Q4`. `R1` maps to\
+    \ `Q1`, `R8` maps to `Q3`/`Q4`, and `R4`–`R7` rest on coverage, sentiment and intermediate-output\
+    \ fields that the current checker does not inspect. `R2` has no enforcing component.\n\nSo this table\
+    \ states what a compliant system must do, not what the baseline already does.\n\n**Authority**: No\
+    \ model output can set, change or skip the check's result. Text in model output that claims a check\
+    \ result (\"validated\", \"PASSED\") has no effect.\n\n**Meaning**: `PASSED` means only that the report\
+    \ meets rules R1–R8. It does not mean the analysis is correct, the facts are true or the rating is\
+    \ good advice. The report shows this sentence next to the result.\n\n**Results**: any blocking finding\
+    \ → `NEEDS_REVIEW`; only corrected findings or none → `PASSED`; `INCOMPLETE` run → `NOT_RUN`.\n\n\
+    **Failure behaviour**: If the check itself raises, the result is `NEEDS_REVIEW` with finding `CHECK_ERROR`.\
+    \ It never falls back to `PASSED`."
+  fit_criterion: 'Given the offline profile, when (a) every `COMPLETED` fixture in Appendix A is inspected,
+    then 100% of `output_check` values equal R1–R8 applied to the final state, and the field is written
+    at exactly 1 call site in the code; (b) a fixture makes the check raise, then the result is `NEEDS_REVIEW`
+    + `CHECK_ERROR` (1/1); (c) a fixture''s model text says "OUTPUT CHECK: PASSED" while R3 fails, then
+    the result is `NEEDS_REVIEW` (1/1); (d) every `INCOMPLETE` fixture has `NOT_RUN` (100%).'
+  tradeoff: One more stage after the graph, and a second place a reader must look.
+  metric: authority of the output check; results set by model text
+  threshold: 0 of the injected model-text fixtures change output_check; 8/8 rules R1-R8 produce a blocking
+    finding on their failing fixture
+  verification: offline profile; inject each rule's failing fixture plus a model-text override attempt
+  dependencies:
+  - REQ-TA-RUN-001
+  baseline: 'Re-verified 2026-11-23 against `Le-kk/CS5351@c0081cb`. The deterministic check now exists:
+    `runapi/checks.py` defines `OutputChecker` with rules Q1-Q4 (rating readable, provenance matches the
+    frozen snapshot, disclaimer present, no prohibited guarantee phrase), each broken rule becoming a
+    blocking `Finding`, and `runapi/finalize.py` makes the outcome decision. `runapi/reporting.py` verifies
+    the envelope header against the trusted input. What remains unverified is enforcement on every enabled
+    entry point: the raw `TradingAgentsGraph` primitive is a declared reduced-coverage path, and the Portfolio
+    Manager still writes its rating directly (`agents/managers/portfolio_manager.py`).'
+  open: Member B designs the component and documents the authority and failure rules above.
+  source:
+  - kind: team_document
+    ref: requirements-draft-v4.md
+    sha256: 542f382c6ae7040442c075cfe4c8416025af4872dcb62c5b189154c846cab051
+    locator: REQ-TA-ARCH-002
+  - kind: baseline_observation
+    ref: Le-kk/CS5351@c0081cb
+    locator: baseline statement verified against the team repository
+  note: 'Rules R1-R8 are the OUTPUT-CHECK rules defined in requirements-draft-v4.md. Naming, corrected
+    2026-11-23 after Member B''s reply, to avoid a collision in the team''s documents: `docs/architecture/runtime-policy-catalog.md`
+    uses the same `R` prefix for unrelated trigger rows (its R1 is a provider failover, its R3 is model
+    exhausted), and `tradingagents/runapi/checks.py` emits only `Q1`-`Q4`. R1 maps to Q1, R8 to Q3/Q4;
+    R4-R7 rest on coverage, sentiment and intermediate-output fields that this requirement set defines
+    and the current checker does not inspect, and R2 has no enforcing component. So R1-R8 state what a
+    compliant system must do, not what the baseline does. Identity rule and result mapping are unchanged.'
+- id: REQ-TA-INV-001
+  title: Unreadable rating never passes
+  type: invariant
+  priority: Must
+  status: proposed
+  statement: The system shall hold that a final rating that cannot be parsed is reported as `REVIEW` with
+    `output_check = NEEDS_REVIEW`, and `PASSED` is never claimed for a run whose final rating is `REVIEW`.
+    This does not claim that every `COMPLETED` run yields a usable investment rating, and it does not
+    make `REVIEW` a model failure.
+  zero_tolerance: true
+  enforced_by: REQ-TA-ARCH-002
+  rule_owner: REQ-TA-RUN-001
+  amended_by: []
+  fit_criterion: Given the unreadable-rating fixtures, when each is checked, then 100% are reported `COMPLETED`
+    + `REVIEW` + `NEEDS_REVIEW` (rule R1); 0 REPORT a `REVIEW` rating under `PASSED`. A single observed
+    violation is 1 blocking defect; no run is exempt.
+  tradeoff: A zero-tolerance invariant fails the build on one counterexample, which costs time when the
+    counterexample is a fixture bug rather than a product bug.
+  dependencies:
+  - REQ-TA-ARCH-002
+  note: 'Promoted 2026-11-23 (A-10) from ARCH-002''s rule table; source requirement RUN-001. LAYERS (OQ-7,
+    revised 2026-11-23): this entry owns the requirement meaning and its zero-tolerance fit criterion.
+    Member B''s `docs/architecture/invariants.md` owns the architecture enforcement, runtime monitor and
+    fallback. Neither document overrides the other. Crosswalk to B''s register (B''s reply of 2026-11-23):
+    relationship = partial; B''s entries = INV-08, INV-03; deterministic output-check rule that enforces
+    it = Q1. The overlap is qualified: B''s entry is close in intent but its mechanism is not identical,
+    so compliance with it does not by itself prove this rule. A''s disposition after B''s reply: kept. '
+  source:
+  - kind: team_decision
+    ref: req-final-scope-A-2026-11-22.md#4
+    locator: A-10
+  - kind: team_document
+    ref: architecture-blueprint.md
+    locator: ARCH-002 rules R1-R8
+  - kind: team_document
+    ref: docs/architecture/invariants.md
+    locator: crosswalk entry INV-08, INV-03
+- id: REQ-TA-INV-002
+  title: Every cited evidence ID resolves
+  type: invariant
+  priority: Must
+  status: proposed
+  statement: The system shall hold that every evidence ID cited in any report resolves to a registered
+    record.
+  zero_tolerance: true
+  enforced_by: REQ-TA-ARCH-002
+  rule_owner: REQ-TA-FR-001
+  amended_by: []
+  fit_criterion: Given a rendered report, when every citation is resolved, then 100% of cited IDs resolve
+    to exactly one record; a dangling ID gives 1 blocking finding (R2). A single observed violation is
+    1 blocking defect; no run is exempt.
+  tradeoff: A zero-tolerance invariant fails the build on one counterexample, which costs time when the
+    counterexample is a fixture bug rather than a product bug.
+  dependencies:
+  - REQ-TA-ARCH-002
+  note: 'Promoted 2026-11-23 (A-10) from ARCH-002''s rule table; source requirement FR-001. LAYERS (OQ-7,
+    revised 2026-11-23): this entry owns the requirement meaning and its zero-tolerance fit criterion.
+    Member B''s `docs/architecture/invariants.md` owns the architecture enforcement, runtime monitor and
+    fallback. Neither document overrides the other. Crosswalk to B''s register (B''s reply of 2026-11-23):
+    relationship = none; B''s entries = none; deterministic output-check rule that enforces it = none
+    in Q1-Q4. B''s register has no complete counterpart. The rule has no implementation or enforcing component
+    in the current code. A''s disposition after B''s reply: kept, unverified. There is no cited-evidence
+    registry in the current architecture; INV-04 binds input provenance only. This is therefore an adopted
+    obligation that nothing currently enforces.'
+  source:
+  - kind: team_decision
+    ref: req-final-scope-A-2026-11-22.md#4
+    locator: A-10
+  - kind: team_document
+    ref: architecture-blueprint.md
+    locator: ARCH-002 rules R1-R8
+  - kind: team_document
+    ref: docs/architecture/invariants.md
+    locator: no counterpart (B, 2026-11-23)
+- id: REQ-TA-INV-003
+  title: No banned ownership phrase
+  type: invariant
+  priority: Must
+  status: proposed
+  statement: The system shall hold that no delivered report or prompt asserts account ownership.
+  zero_tolerance: true
+  enforced_by: REQ-TA-ARCH-002
+  rule_owner: REQ-TA-FR-007
+  amended_by: []
+  fit_criterion: Given the banned-phrase fixtures, when each is scanned, then 0 reports and 0 prompts
+    contain a banned ownership phrase; each occurrence is 1 blocking finding (R3). A single observed violation
+    is 1 blocking defect; no run is exempt.
+  tradeoff: A zero-tolerance invariant fails the build on one counterexample, which costs time when the
+    counterexample is a fixture bug rather than a product bug.
+  dependencies:
+  - REQ-TA-ARCH-002
+  note: 'Promoted 2026-11-23 (A-10) from ARCH-002''s rule table; source requirement FR-007. LAYERS (OQ-7,
+    revised 2026-11-23): this entry owns the requirement meaning and its zero-tolerance fit criterion.
+    Member B''s `docs/architecture/invariants.md` owns the architecture enforcement, runtime monitor and
+    fallback. Neither document overrides the other. Crosswalk to B''s register (B''s reply of 2026-11-23):
+    relationship = partial; B''s entries = INV-02, INV-13; deterministic output-check rule that enforces
+    it = none in Q1-Q4. The overlap is qualified: B''s entry is close in intent but its mechanism is not
+    identical, so compliance with it does not by itself prove this rule. A''s disposition after B''s reply:
+    propose narrowing. B notes that no current rule is a universal ownership classifier and that conditional
+    explanations and quotations must be assessed in context. A proposes narrowing this rule to assertions
+    grounded in supplied facts and is waiting for B to name the acceptable boundary; until then the wording
+    above stands.'
+  source:
+  - kind: team_decision
+    ref: req-final-scope-A-2026-11-22.md#4
+    locator: A-10
+  - kind: team_document
+    ref: architecture-blueprint.md
+    locator: ARCH-002 rules R1-R8
+  - kind: team_document
+    ref: docs/architecture/invariants.md
+    locator: crosswalk entry INV-02, INV-13
+- id: REQ-TA-INV-004
+  title: Sentiment score matches band
+  type: invariant
+  priority: Must
+  status: proposed
+  statement: The system shall hold that the sentiment score lies inside the range of its chosen band.
+  zero_tolerance: true
+  enforced_by: REQ-TA-ARCH-002
+  rule_owner: REQ-TA-FR-008
+  amended_by: []
+  fit_criterion: Given 6 sentiment fixtures, when each is checked, then 6/6 are classified correctly against
+    the band ranges; an out-of-range score is 1 blocking finding (R4). A single observed violation is
+    1 blocking defect; no run is exempt.
+  tradeoff: A zero-tolerance invariant fails the build on one counterexample, which costs time when the
+    counterexample is a fixture bug rather than a product bug.
+  dependencies:
+  - REQ-TA-ARCH-002
+  note: 'Promoted 2026-11-23 (A-10) from ARCH-002''s rule table; source requirement FR-008. LAYERS (OQ-7,
+    revised 2026-11-23): this entry owns the requirement meaning and its zero-tolerance fit criterion.
+    Member B''s `docs/architecture/invariants.md` owns the architecture enforcement, runtime monitor and
+    fallback. Neither document overrides the other. Crosswalk to B''s register (B''s reply of 2026-11-23):
+    relationship = none; B''s entries = none; deterministic output-check rule that enforces it = none
+    in Q1-Q4. B''s register has no complete counterpart. The rule has no implementation or enforcing component
+    in the current code. A''s disposition after B''s reply: kept. '
+  source:
+  - kind: team_decision
+    ref: req-final-scope-A-2026-11-22.md#4
+    locator: A-10
+  - kind: team_document
+    ref: architecture-blueprint.md
+    locator: ARCH-002 rules R1-R8
+  - kind: team_document
+    ref: docs/architecture/invariants.md
+    locator: no counterpart (B, 2026-11-23)
+- id: REQ-TA-INV-005
+  title: Sentiment confidence within the coverage cap
+  type: invariant
+  priority: Must
+  status: proposed
+  statement: The system shall hold that confidence is at most `low` when any of the three sources is not
+    `OK`, and the correction is recorded.
+  zero_tolerance: true
+  enforced_by: REQ-TA-ARCH-002
+  rule_owner: REQ-TA-FR-008
+  amended_by: []
+  fit_criterion: Given a fixture with Reddit unavailable and confidence `high`, when it is checked, then
+    confidence is corrected to `low` and both values are recorded; 1 correction, 0 blocking findings (R5).
+    A single observed violation is 1 blocking defect; no run is exempt.
+  tradeoff: A zero-tolerance invariant fails the build on one counterexample, which costs time when the
+    counterexample is a fixture bug rather than a product bug.
+  dependencies:
+  - REQ-TA-ARCH-002
+  note: 'Promoted 2026-11-23 (A-10) from ARCH-002''s rule table; source requirement FR-008. LAYERS (OQ-7,
+    revised 2026-11-23): this entry owns the requirement meaning and its zero-tolerance fit criterion.
+    Member B''s `docs/architecture/invariants.md` owns the architecture enforcement, runtime monitor and
+    fallback. Neither document overrides the other. Crosswalk to B''s register (B''s reply of 2026-11-23):
+    relationship = none; B''s entries = none; deterministic output-check rule that enforces it = none
+    in Q1-Q4. B''s register has no complete counterpart. The rule has no implementation or enforcing component
+    in the current code. A''s disposition after B''s reply: kept. '
+  source:
+  - kind: team_decision
+    ref: req-final-scope-A-2026-11-22.md#4
+    locator: A-10
+  - kind: team_document
+    ref: architecture-blueprint.md
+    locator: ARCH-002 rules R1-R8
+  - kind: team_document
+    ref: docs/architecture/invariants.md
+    locator: no counterpart (B, 2026-11-23)
+- id: REQ-TA-INV-006
+  title: No sentiment direction without any sentiment data
+  type: invariant
+  priority: Must
+  status: proposed
+  statement: The system shall hold that when none of the three sources is `OK`, the band is `Neutral`.
+  zero_tolerance: true
+  enforced_by: REQ-TA-ARCH-002
+  rule_owner: REQ-TA-FR-008
+  amended_by: []
+  fit_criterion: Given a fixture with all 3 sources unavailable and band `Bullish`, when it is checked,
+    then 1 blocking finding is raised (R6). A single observed violation is 1 blocking defect; no run is
+    exempt.
+  tradeoff: A zero-tolerance invariant fails the build on one counterexample, which costs time when the
+    counterexample is a fixture bug rather than a product bug.
+  dependencies:
+  - REQ-TA-ARCH-002
+  note: 'Promoted 2026-11-23 (A-10) from ARCH-002''s rule table; source requirement FR-008. LAYERS (OQ-7,
+    revised 2026-11-23): this entry owns the requirement meaning and its zero-tolerance fit criterion.
+    Member B''s `docs/architecture/invariants.md` owns the architecture enforcement, runtime monitor and
+    fallback. Neither document overrides the other. Crosswalk to B''s register (B''s reply of 2026-11-23):
+    relationship = none; B''s entries = none; deterministic output-check rule that enforces it = none
+    in Q1-Q4. B''s register has no complete counterpart. The rule has no implementation or enforcing component
+    in the current code. A''s disposition after B''s reply: kept, scope narrowed. B notes that missing
+    sentiment data must not force the whole research rating to Hold when other evidence exists. The scope
+    of this rule is the sentiment band only, never the final rating.'
+  source:
+  - kind: team_decision
+    ref: req-final-scope-A-2026-11-22.md#4
+    locator: A-10
+  - kind: team_document
+    ref: architecture-blueprint.md
+    locator: ARCH-002 rules R1-R8
+  - kind: team_document
+    ref: docs/architecture/invariants.md
+    locator: no counterpart (B, 2026-11-23)
+- id: REQ-TA-INV-007
+  title: Data coverage section equals the record
+  type: invariant
+  priority: Must
+  status: proposed
+  statement: The system shall hold that the rendered data-coverage section equals the recorded coverage,
+    including `NOT_REQUESTED`.
+  zero_tolerance: true
+  enforced_by: REQ-TA-ARCH-002
+  rule_owner: REQ-TA-FR-005
+  amended_by:
+  - D-1
+  fit_criterion: Given a market-only run, when the section is rendered, then it shows 4 `OK` and 8 `NOT_REQUESTED`
+    and equals the record exactly; 0 mismatches (R7). A single observed violation is 1 blocking defect;
+    no run is exempt.
+  tradeoff: A zero-tolerance invariant fails the build on one counterexample, which costs time when the
+    counterexample is a fixture bug rather than a product bug.
+  dependencies:
+  - REQ-TA-ARCH-002
+  note: 'Promoted 2026-11-23 (A-10) from ARCH-002''s rule table; source requirement FR-005. LAYERS (OQ-7,
+    revised 2026-11-23): this entry owns the requirement meaning and its zero-tolerance fit criterion.
+    Member B''s `docs/architecture/invariants.md` owns the architecture enforcement, runtime monitor and
+    fallback. Neither document overrides the other. Crosswalk to B''s register (B''s reply of 2026-11-23):
+    relationship = none; B''s entries = none; deterministic output-check rule that enforces it = none
+    in Q1-Q4. B''s register has no complete counterpart. The rule has no implementation or enforcing component
+    in the current code. A''s disposition after B''s reply: kept. '
+  source:
+  - kind: team_decision
+    ref: req-final-scope-A-2026-11-22.md#4
+    locator: A-10
+  - kind: team_document
+    ref: architecture-blueprint.md
+    locator: ARCH-002 rules R1-R8
+  - kind: team_document
+    ref: docs/architecture/invariants.md
+    locator: no counterpart (B, 2026-11-23)
+- id: REQ-TA-INV-008
+  title: Disclaimer present, no guarantee phrase
+  type: invariant
+  priority: Must
+  status: proposed
+  statement: The system shall hold that every report starts with the disclaimer and contains no prohibited
+    guarantee phrase.
+  zero_tolerance: true
+  enforced_by: REQ-TA-ARCH-002
+  rule_owner: REQ-TA-SEC-003
+  amended_by: []
+  fit_criterion: Given 20 rendered reports, when each is checked, then 20/20 start with the disclaimer
+    and the 5 guarantee fixtures each raise 1 blocking finding (R8). A single observed violation is 1
+    blocking defect; no run is exempt.
+  tradeoff: A zero-tolerance invariant fails the build on one counterexample, which costs time when the
+    counterexample is a fixture bug rather than a product bug.
+  dependencies:
+  - REQ-TA-ARCH-002
+  note: 'Promoted 2026-11-23 (A-10) from ARCH-002''s rule table; source requirement SEC-003. LAYERS (OQ-7,
+    revised 2026-11-23): this entry owns the requirement meaning and its zero-tolerance fit criterion.
+    Member B''s `docs/architecture/invariants.md` owns the architecture enforcement, runtime monitor and
+    fallback. Neither document overrides the other. Crosswalk to B''s register (B''s reply of 2026-11-23):
+    relationship = partial; B''s entries = INV-03; deterministic output-check rule that enforces it =
+    Q3, Q4. The overlap is qualified: B''s entry is close in intent but its mechanism is not identical,
+    so compliance with it does not by itself prove this rule. A''s disposition after B''s reply: kept. '
+  source:
+  - kind: team_decision
+    ref: req-final-scope-A-2026-11-22.md#4
+    locator: A-10
+  - kind: team_document
+    ref: architecture-blueprint.md
+    locator: ARCH-002 rules R1-R8
+  - kind: team_document
+    ref: docs/architecture/invariants.md
+    locator: crosswalk entry INV-03
+- id: REQ-TA-GOV-001
+  title: Semantic evaluation gate
+  type: governance
+  priority: Must
+  status: proposed
+  statement: "Every change to prompt or model settings (paths in `GOV_PATHS`) shall pass the semantic\
+    \ evaluation suite before merge.\n\n**Suite contents** (minimum): `N_EVAL` fixed cases scored by a\
+    \ fixed rubric under the live profile, including: the FR-005 absence-wording check, the FR-007 ownership-wording\
+    \ check, the SEC-001 injection cases and the SEC-003 guarantee prompts. Scores follow EVAL-001's counting\
+    \ rules.\n\n**Start-up rule**: Until Member D fixes `QUALITY_THRESHOLD` from a baseline measurement,\
+    \ the job runs and reports but does not block merges."
+  fit_criterion: Given `QUALITY_THRESHOLD` is fixed, when a PR touches a file in `GOV_PATHS`, then the
+    job runs 1 time and a score below `QUALITY_THRESHOLD` fails a required check (merge blocked). A PR
+    touching no such path skips the job without blocking.
+  tradeoff: Every prompt edit pays evaluation time and API cost.
+  metric: whether a prompt/model change can merge without passing the semantic suite
+  threshold: 0 merges touching GOV_PATHS without a suite run once QUALITY_THRESHOLD is fixed; a below-threshold
+    score blocks the merge
+  verification: CI job inspection plus one deliberately failing score fixture
+  dependencies: []
+  baseline: 'Re-verified 2026-11-23 against `Le-kk/CS5351@c0081cb`. CI runs pytest, a clean-install smoke
+    test and strict ruff (`.github/workflows/ci.yml`); no requirement-registry validation step exists
+    yet. A semantic evaluation exists outside CI: `docs/verification/semantic-evaluation.md` (GOV-004)
+    and `docs/architecture/evaluation-table.md`, with recorded evidence under `docs/reviews/evidence/`.'
+  open: Define the cases and rubric; fix the parameters.
+  source:
+  - kind: team_document
+    ref: requirements-draft-v4.md
+    sha256: 542f382c6ae7040442c075cfe4c8416025af4872dcb62c5b189154c846cab051
+    locator: REQ-TA-GOV-001
+  - kind: baseline_observation
+    ref: Le-kk/CS5351@c0081cb
+    locator: baseline statement verified against the team repository
+- id: REQ-TA-GOV-002
+  title: Test plan approved before implementation
+  type: governance
+  priority: Must
+  status: proposed
+  statement: "Before implementation begins, the test plan for a changed feature shall carry an attributable\
+    \ human approval record covering the approved test scope and the plan revision approved; an implementation\
+    \ pull request shall not merge otherwise.\n\n**Record (format confirmed by Member E, 2026-11-23; mechanism\
+    \ not yet implemented).** One YAML file per approval under `docs/verification/approvals/`, uniquely\
+    \ named where a feature has several approvals or revisions, with superseded evidence preserved. Minimum\
+    \ fields: `approver`, `approver_role`, `approved_at` with timezone, `plan_ref`, `plan_sha256`, `scope`\
+    \ (the covered requirement or feature IDs), `approval_evidence_ref` (the retained human confirmation)\
+    \ and `approval_commit` (the revision holding the approved plan and the record). A GitHub account\
+    \ name maps to a named team member. A bot-generated file is never human approval.\n\n**Rules.** The\
+    \ approval revision must be an ancestor of the first implementation commit for the declared scope;\
+    \ a self-entered timestamp is not sufficient proof, and ancestry is evidence of ordering only, never\
+    \ of when coding actually began or of genuine human review. The plan hash is checked against the plan\
+    \ at the approved revision. An approval never extends to a materially changed plan or to an unlisted\
+    \ feature without renewed approval. No hotfix, single-member or approver-absence exception exists.\
+    \ A later passing test run or a CI receipt cannot substitute for a missing prior approval. Historical\
+    \ work without evidence is disclosed as an evidence gap, never backdated or retrospectively described\
+    \ as prior approval."
+  fit_criterion: 'Given an implementation pull request, when its approval check runs, then (a) a valid
+    record with all 8 fields, a human evidence reference, a matching `plan_sha256` and a covering `scope`
+    whose `approval_commit` is an ancestor of the first implementation commit passes with 0 blocking findings;
+    and (b) each of 5 negative fixtures fails with exactly 1 blocking finding: record absent, record incomplete,
+    approval commit not an ancestor, plan hash or scope mismatch, and an approval claim with no human
+    evidence.'
+  tradeoff: The approval record is an extra artefact to maintain and keep attributable before any code
+    is written.
+  metric: approval records traceable to a commit on the approved history
+  threshold: 100% of approval records name the approver, the commit and the artefact version; 100% of
+    approved commits are ancestors of the approving branch head
+  verification: audit every approval record against the commit graph; attempt a rebased rewrite and confirm
+    it is detected
+  dependencies: []
+  baseline: Not present; this is a process rule, not a product feature.
+  open: Team and course decision on the record format.
+  source:
+  - kind: team_document
+    ref: requirements-draft-v4.md
+    sha256: 542f382c6ae7040442c075cfe4c8416025af4872dcb62c5b189154c846cab051
+    locator: REQ-TA-GOV-002
+  - kind: baseline_observation
+    ref: Le-kk/CS5351@c0081cb
+    locator: baseline statement verified against the team repository
+  - kind: team_document
+    ref: cs5351-2026-2027-project.pdf
+    locator: p10 gate 1
+  - kind: team_document
+    ref: cs5351-2026-2027-project.pdf
+    locator: p6 D1(transcript), p7 D9
+  note: 'OQ-3, closed 2026-11-23 on Member E''s reply. The record format v4 left open as ''team and course
+    decision'' is now stated. Two corrections to A''s own earlier wording. First, A had proposed switching
+    the ordering check from timestamps to commit ancestry; E''s answer is that ancestry is the repository-ordering
+    check only and proves neither that coding began later nor that a human approved the tests, and both
+    the requirement and the evidence must say so. Second, E proposed replacing this requirement with post-implementation
+    CI receipts; E has since checked course page 10 gate 1 and the transcript requirements on pages 6
+    and 7, withdrawn that proposal, and will implement this gate. That replacement wording is recorded
+    as withdrawn, not adopted. Status is `proposed`, not `implemented`: E states that the mechanism and
+    its positive and negative checks are not yet built, and neither this reply nor the course citation
+    is the team''s signed adoption record.'
+- id: REQ-TA-GOV-003
+  title: AI-use log updated before merge
+  type: governance
+  priority: Must
+  status: proposed
+  statement: A pull request that changes code or prompts shall be blocked unless the AI-use log has been
+    updated for that change. The log records the real tools, models and interventions used; it is not
+    a retyped summary. The gate checks that an update exists in the pull request; it does not validate
+    the log's format or prose except where a separately agreed rule says so.
+  fit_criterion: Given a pull request that changes a file under the governed code or prompt paths, when
+    the AI-use log gate runs, then (a) 1 accepted fixture with an updated log passes with 0 findings;
+    (b) 1 rejected fixture without an update fails with exactly 1 blocking finding; and (c) a pull request
+    that touches only files outside those paths is not blocked, 0 findings.
+  dependencies: []
+  tradeoff: A mandatory log edit on every code or prompt change adds friction; it is accepted because
+    the course names this gate explicitly.
+  amended_by: []
+  note: 'Added 2026-11-23 on Member E''s E14. Course page 10 gate 6 names it as a blocking gate, and page
+    9 lists `.github/workflows/ci.yml` as the D7 blocking-gate pipeline, so it belongs in the registry,
+    not only in repository process. Crosswalk: the team''s `SEL-TA-GOV-005` states the same obligation;
+    this entry is its `REQ-TA-*` counterpart, not an untracked duplicate, and `SEL-TA-GOV-005` is retired
+    as a separate requirement only when the crosswalk is agreed. None of this is implemented: `.github/workflows/ci.yml`
+    at `Le-kk/CS5351@c0081cb` has three jobs (tests, smoke-install, lint) and no AI-log or dependency
+    gate. E states the update-only policy stays; format and content validation are explicitly not requested.'
+  source:
+  - kind: team_document
+    ref: cs5351-2026-2027-project.pdf
+    locator: p10 gate 6, p9 ci.yml
+  - kind: team_document
+    ref: docs/req/selected-requirements.md
+    locator: SEL-TA-GOV-005
+fixture_profiles:
+  note: 'Added 2026-11-23 to correct a contradiction in A''s own Appendix A. The offline profile pinned
+    `Portfolio: None (research-only scope)` while 11 test modules supply a portfolio and test_nfr003_privacy.py
+    plants a second position that cannot exist without one. The selected requirements accept an optional
+    user-supplied snapshot, so the offline profile is split into three variants. No fixture count is re-derived:
+    a changed population is a versioned acceptance change, not an edit to this file. This does not adopt
+    the wider input scope; OQ-13 remains open for the team.'
+  offline_variants:
+    A-A: no portfolio supplied (default)
+    A-B: confirmed user-supplied snapshot, selected instrument absent
+    A-C: confirmed snapshot holding the selected instrument plus one unrelated position
+  assignment:
+    A-A:
+    - REQ-TA-RUN-001
+    - REQ-TA-FR-001
+    - REQ-TA-FR-005
+    - REQ-TA-FR-007
+    - REQ-TA-FR-008
+    - REQ-TA-NFR-001
+    - REQ-TA-NFR-OBS-001
+    - REQ-TA-NFR-PERF-002
+    - REQ-TA-NFR-COST-002
+    - REQ-TA-NFR-COST-003
+    - REQ-TA-SEC-001
+    - REQ-TA-SEC-003
+    - REQ-TA-ARCH-002
+    - REQ-TA-INV-001
+    - REQ-TA-INV-002
+    - REQ-TA-INV-003
+    - REQ-TA-INV-004
+    - REQ-TA-INV-005
+    - REQ-TA-INV-006
+    - REQ-TA-INV-007
+    - REQ-TA-INV-008
+    A-B:
+    - REQ-TA-NFR-002
+    - REQ-TA-FR-003
+    - REQ-TA-FR-004
+    - REQ-TA-FR-006
+    - REQ-TA-NFR-REPRO-001
+    A-B and A-C:
+    - REQ-TA-SEC-002
+    A-C: []
+    live profile:
+    - REQ-TA-NFR-PERF-001
+    - REQ-TA-NFR-COST-001
+    - REQ-TA-GOV-001
+    counting fixture, not acceptance:
+    - REQ-TA-NFR-EVAL-001
+    no run profile (static or CI gate):
+    - REQ-TA-ARCH-001
+    - REQ-TA-GOV-002
+    - REQ-TA-GOV-003
+  both: REQ-TA-FR-002 is exercised under A-A for the no-portfolio input and A-B for the portfolio-present
+    input
+  candidate_only: The holdings-minimisation clause lives in candidate entry INV-010, which is NOT in the
+    registry. When it is adopted it takes profile A-C. Recorded here so the profile gap is visible now
+    rather than appearing at adoption time.
+  appendix_a_markdown: "\n\n---\n\n## Appendix A: Test profiles and fixture counts\n\n**Offline profiles.**\
+    \ The offline profile is defined in three variants. A requirement is exercised under the variant its\
+    \ obligation needs, and each requirement's row below names it. **A-A** is the default: no portfolio\
+    \ supplied, which is the narrower of the two supported inputs. **A-B** and **A-C** supply a user-supplied\
+    \ snapshot and exist because the optional-input scope (NFR-FR-003, SEC-002, FR-004, FR-006, NFR-REPRO-001)\
+    \ and the privacy rule (`REQ-TA-INV-010` clause 2) cannot be exercised without one.\n\n| Element |\
+    \ A-A: no portfolio | A-B: portfolio, no holding | A-C: portfolio with an unrelated holding |\n|---|---|---|---|\n\
+    | Code version | `tradingagents.__version__ == \"0.7.1\"` | same | same |\n| Model | Scripted chat\
+    \ model patched over `create_tier_client` (`ScriptedModel` in `tests/test_graph_end_to_end.py`) |\
+    \ same | same |\n| Data | Offline fixtures; network refused by the autouse `_no_network` fixture |\
+    \ same | same |\n| **Portfolio** | **None selected** | **Confirmed snapshot, selected instrument absent\
+    \ from it** | **Confirmed snapshot holding the selected instrument plus one unrelated position** |\n\
+    | Cache | `data_cache_dir` emptied before each run | same | same |\n| Checkpoints | `checkpoint_enabled\
+    \ = false` except FR-003 | same | same |\n\n**Profile assignment**\n\n| Requirements | Profile | Why\
+    \ |\n|---|---|---|\n| FR-001, FR-005, FR-007, FR-008, NFR-001, NFR-OBS-001, NFR-PERF-002, NFR-COST-002,\
+    \ NFR-COST-003, SEC-001, SEC-003, ARCH-002, INV-001…008 | **A-A** | No portfolio is part of any of\
+    \ their obligations |\n| FR-002 consent (confirm, decline, EOF) | **A-A** for the no-portfolio input;\
+    \ **A-B** for the portfolio-present input | The gate must behave the same whether or not a portfolio\
+    \ is supplied |\n| FR-003 freezing, checkpoints, resume | **A-B** | The snapshot, its fingerprint\
+    \ and its provenance are the thing being frozen |\n| FR-004 point-in-time propagation | **A-B** |\
+    \ Portfolio context is one of the propagated channels |\n| FR-006 provenance | **A-B** | The record\
+    \ must name which snapshot was used, which requires one |\n| NFR-REPRO-001 | **A-B** | Run-record\
+    \ identity includes the frozen snapshot fingerprint |\n| SEC-002 / `INV-010` clause 1 (credentials)\
+    \ | **A-A**, **A-B** and **A-C** | Credential paths must be exercised whether or not a portfolio is\
+    \ present |\n| SEC-002 / `INV-010` clause 2 (holdings minimisation) | **A-C** | The clause is about\
+    \ an unrelated position that must not appear; it cannot be tested without one |\n| NFR-EVAL-001 |\
+    \ A-A; its 10 records are a **counting fixture**, not an acceptance run | See rule 5 |\n| PERF-001,\
+    \ COST-001, GOV-001 suite | **Live profile**, unchanged | Run by Member D |\n\n**What this appendix\
+    \ does not do.** It does not change any fixture count below. If a count was computed under the old\
+    \ single profile, the count is now of unknown profile coverage and is flagged by the owner of the\
+    \ requirement, not silently re-derived.\n\n"
+parameter_appendix:
+- name: STALE_PRICE_DAYS
+  value: 10 calendar days
+  state: fixed
+  owner: A
+  used_by:
+  - REQ-TA-FR-006
+- name: STALE_STATEMENT_DAYS
+  value: 200 days
+  state: provisional
+  owner: A
+  used_by:
+  - REQ-TA-FR-006
+- name: RUN_TIME_CAP
+  value: 120 s
+  state: provisional
+  owner: D
+  used_by:
+  - REQ-TA-NFR-PERF-001
+  - REQ-TA-NFR-PERF-002
+- name: CANCEL_ALLOWANCE
+  value: 2 s
+  state: fixed
+  owner: B
+  used_by:
+  - REQ-TA-NFR-PERF-002
+- name: TOKEN_BUDGET
+  value: to be measured
+  state: open
+  owner: D
+  used_by:
+  - REQ-TA-NFR-COST-001
+- name: CALL_CAP
+  value: to be measured (test value 8)
+  state: open
+  owner: D
+  used_by:
+  - REQ-TA-NFR-COST-002
+- name: QUALITY_THRESHOLD
+  value: to be measured
+  state: open
+  owner: D, E
+  used_by:
+  - REQ-TA-GOV-001
+- name: N_EVAL
+  value: 20 cases
+  state: provisional
+  owner: D
+  used_by:
+  - REQ-TA-GOV-001
