@@ -1,0 +1,495 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cityu-cs5351.example/req-schema.json",
+  "title": "TradingAgents requirement registry",
+  "description": "Schema for docs/req/requirements.yaml (D1). Owner: Member A. Validates structure and the fields the course requires (ID, type, statement, machine-checkable fit criterion, MoSCoW priority, tradeoff, sources). It does NOT judge whether a fit criterion is actually testable; that is Member C's review.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "document",
+    "scope",
+    "priorities",
+    "status_values",
+    "fixture_profiles",
+    "requirements"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "const": "1.2.0"
+    },
+    "document": {
+      "type": "object",
+      "required": [
+        "title",
+        "owner",
+        "decision_date",
+        "timezone",
+        "status",
+        "source_document",
+        "source_sha256"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "owner": {
+          "const": "A"
+        },
+        "decision_date": {
+          "type": "string",
+          "format": "date"
+        },
+        "timezone": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "proposed_for_adoption",
+            "adopted"
+          ],
+          "description": "Must stay proposed_for_adoption until the five-member adoption record is complete."
+        },
+        "adoption_record": {
+          "type": "string"
+        },
+        "source_document": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$",
+          "description": "SHA-256 of the source requirement draft, so drift is detectable."
+        },
+        "note": {
+          "type": "string"
+        },
+        "baseline_document": {
+          "type": "string"
+        },
+        "baseline_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    },
+    "scope": {
+      "type": "object",
+      "required": [
+        "statement",
+        "prd_narrative",
+        "withdrawn_ids"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "statement": {
+          "type": "string",
+          "minLength": 40
+        },
+        "prd_narrative": {
+          "type": "string",
+          "minLength": 40,
+          "description": "Explains how this registry relates to the course's YAML PRD. Must not assert an instructor answer that has not been given."
+        },
+        "withdrawn_ids": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Withdrawn IDs are preserved forever and never reused.",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "reason"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/requirementId"
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 10
+              }
+            }
+          }
+        }
+      }
+    },
+    "priorities": {
+      "type": "object",
+      "required": [
+        "scheme",
+        "values"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "scheme": {
+          "const": "MoSCoW"
+        },
+        "values": {
+          "const": [
+            "Must",
+            "Should",
+            "Could"
+          ],
+          "description": "Won't is expressed by moving an ID to scope.withdrawn_ids, not by adding a value here."
+        }
+      }
+    },
+    "status_values": {
+      "const": [
+        "implemented",
+        "partial",
+        "proposed",
+        "to_be_confirmed"
+      ],
+      "description": "implemented must not be claimed without evidence; that is verified by C, not by this schema."
+    },
+    "requirements": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/requirement"
+      }
+    },
+    "parameter_appendix": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "value",
+          "state",
+          "owner",
+          "used_by"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]*$"
+          },
+          "value": {
+            "type": "string",
+            "minLength": 1
+          },
+          "state": {
+            "enum": [
+              "fixed",
+              "provisional",
+              "open"
+            ]
+          },
+          "owner": {
+            "type": "string",
+            "pattern": "^[A-E](, ?[A-E])*$"
+          },
+          "used_by": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/$defs/requirementId"
+            }
+          }
+        }
+      }
+    },
+    "fixture_profiles": {
+      "type": "object",
+      "description": "Test profiles. Added 2026-11-23 because the single offline profile contradicted the privacy criterion.",
+      "required": [
+        "offline_variants",
+        "assignment"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "note": {
+          "type": "string"
+        },
+        "offline_variants": {
+          "type": "object",
+          "minProperties": 2,
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "assignment": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "both": {
+          "type": "string"
+        },
+        "appendix_a_markdown": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "requirementId": {
+      "type": "string",
+      "pattern": "^REQ-TA-(RUN|FR|NFR|INV|SEC|ARCH|GOV)-[A-Z]*-?\\d{3}$",
+      "description": "Stable ID. Never reused after withdrawal."
+    },
+    "typeValue": {
+      "enum": [
+        "functional",
+        "quality_reliability",
+        "quality_maintainability",
+        "quality_observability",
+        "quality_reproducibility",
+        "quality_evaluation",
+        "performance",
+        "cost",
+        "security",
+        "architectural_constraint",
+        "governance",
+        "invariant"
+      ]
+    },
+    "priority": {
+      "enum": [
+        "Must",
+        "Should",
+        "Could"
+      ]
+    },
+    "status": {
+      "enum": [
+        "implemented",
+        "partial",
+        "proposed",
+        "to_be_confirmed"
+      ]
+    },
+    "sourceRef": {
+      "type": "object",
+      "required": [
+        "kind",
+        "ref"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "team_document",
+            "course_document",
+            "review_finding",
+            "team_decision",
+            "baseline_observation"
+          ]
+        },
+        "ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "locator": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "requirement": {
+      "type": "object",
+      "required": [
+        "id",
+        "title",
+        "type",
+        "priority",
+        "status",
+        "statement",
+        "fit_criterion",
+        "tradeoff",
+        "dependencies",
+        "source"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/requirementId"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 3
+        },
+        "type": {
+          "$ref": "#/$defs/typeValue"
+        },
+        "priority": {
+          "$ref": "#/$defs/priority"
+        },
+        "status": {
+          "$ref": "#/$defs/status"
+        },
+        "statement": {
+          "type": "string",
+          "minLength": 20,
+          "description": "What the system shall do. Must contain 'shall', or be a normative rule list (a numbered set of definitions and rules, as in EVAL-001) introduced by 'shall' elsewhere; a rules-only statement must be marked in evidence.",
+          "anyOf": [
+            {
+              "pattern": "(?i)\\bshall\\b"
+            },
+            {
+              "pattern": "^1\\. "
+            }
+          ]
+        },
+        "fit_criterion": {
+          "type": "string",
+          "minLength": 40,
+          "description": "Machine-checkable acceptance: given <setup>, when <action>, then <observable outcome with a number>. C reviews testability.",
+          "allOf": [
+            {
+              "pattern": "(?i)given|when|then"
+            },
+            {
+              "pattern": "\\d"
+            }
+          ]
+        },
+        "tradeoff": {
+          "type": "string",
+          "minLength": 10,
+          "description": "What is lost or risked by adopting this requirement. Required by the course for every entry."
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/requirementId"
+          },
+          "description": "Other requirements this one relies on. Must not create a Must -> Should ordering violation; that is checked by a separate rule, not this schema."
+        },
+        "related": {
+          "type": "string"
+        },
+        "baseline": {
+          "type": "string"
+        },
+        "open": {
+          "type": "string"
+        },
+        "semantic_part": {
+          "type": "string"
+        },
+        "normative_rule_5": {
+          "type": "string",
+          "description": "EVAL-001 only: the comparison rule, amended by D-2."
+        },
+        "amended_by": {
+          "type": "array",
+          "items": {
+            "pattern": "^D-[1-9]$"
+          },
+          "description": "Decision IDs from req-final-scope-A-2026-11-22.md that changed this entry."
+        },
+        "source": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/sourceRef"
+          }
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/sourceRef"
+          }
+        },
+        "note": {
+          "type": "string"
+        },
+        "metric": {
+          "type": "string",
+          "minLength": 10,
+          "description": "Course D1: non-functional requirements are expressed as metric + threshold + verification."
+        },
+        "threshold": {
+          "type": "string",
+          "minLength": 5,
+          "description": "The numeric boundary the metric must satisfy."
+        },
+        "verification": {
+          "type": "string",
+          "minLength": 10,
+          "description": "How the metric is observed: profile, fixtures, procedure."
+        },
+        "zero_tolerance": {
+          "type": "boolean",
+          "description": "Invariants only: any violation is blocking."
+        },
+        "enforced_by": {
+          "$ref": "#/$defs/requirementId",
+          "description": "Invariants only: the requirement whose component enforces this rule."
+        },
+        "rule_owner": {
+          "$ref": "#/$defs/requirementId",
+          "description": "Invariant only: the requirement that owns this rule's meaning. This is provenance, not a dependency, so it does not create a priority ordering constraint."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "enum": [
+                  "quality_reliability",
+                  "quality_maintainability",
+                  "quality_observability",
+                  "quality_reproducibility",
+                  "quality_evaluation",
+                  "performance",
+                  "cost"
+                ]
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "metric",
+              "threshold",
+              "verification"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "invariant"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "zero_tolerance",
+              "enforced_by"
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "version": "1.1.0"
+}
